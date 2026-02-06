@@ -85,6 +85,39 @@
               />
             </ion-item>
 
+            <!-- Photo upload section -->
+            <div class="photo-section">
+              <ion-button expand="block" class="neon-button secondary" @click="openAddPhotoOptions">
+                Ajouter des photos
+              </ion-button>
+
+              <div v-if="showPhotoOptions" class="photo-options">
+                <ion-button expand="block" class="neon-button" @click="pickFromGallery">Depuis la galerie</ion-button>
+                <ion-button expand="block" class="neon-button" @click="takePhoto">Prendre une photo</ion-button>
+                <ion-button expand="block" class="neon-button secondary" @click="showPhotoOptions = false">Annuler</ion-button>
+              </div>
+
+              <!-- hidden inputs: gallery and camera (capture) -->
+              <input ref="fileInputGallery" style="display:none" type="file" accept="image/*" multiple @change="onFilesSelected" />
+              <input ref="fileInputCamera" style="display:none" type="file" accept="image/*" capture="environment" multiple @change="onFilesSelected" />
+
+              <div v-if="photoPreviews.length" class="photo-previews">
+                <div class="preview-item" v-for="(src, idx) in photoPreviews" :key="idx">
+                  <img :src="src" alt="preview" />
+                  <ion-button size="small" class="neon-button secondary" @click="removePhotoAt(idx)">Retirer</ion-button>
+                </div>
+              </div>
+
+              <div v-if="isUploading" class="upload-status">
+                <ion-progress-bar :value="uploadProgress / 100" color="secondary"></ion-progress-bar>
+                <ion-text class="muted">{{ uploadStatus }} ({{ uploadProgress }}%)</ion-text>
+              </div>
+
+              <ion-text v-if="uploadError" class="feedback" color="danger">
+                {{ uploadError }}
+              </ion-text>
+            </div>
+
             <ion-button
               expand="block"
               class="neon-button"
@@ -149,12 +182,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { addDoc, collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore'
+import { collection, doc, getDocs, setDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { fetchUserProfile, getCachedProfile, getCurrentUser, logoutMobile } from '../services/mobileAuth'
 import L from 'leaflet'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import {
   IonPage,
   IonHeader,
@@ -173,8 +207,12 @@ import {
   IonTextarea,
   IonText,
   IonList,
-  IonLabel
+  IonLabel,
+  IonProgressBar
+  
 } from '@ionic/vue'
+
+defineOptions({ name: 'HomeView' })
 
 const router = useRouter()
 const position = ref<{ lat: number; lng: number } | null>(null)
@@ -182,6 +220,15 @@ const commentaire = ref('')
 const loading = ref(false)
 const message = ref('')
 const messageType = ref<'success' | 'danger'>('success')
+const showPhotoOptions = ref(false)
+const fileInputGallery = ref<HTMLInputElement | null>(null)
+const fileInputCamera = ref<HTMLInputElement | null>(null)
+const photosFiles = ref<File[]>([])
+const photoPreviews = ref<string[]>([])
+const uploadProgress = ref(0)
+const uploadStatus = ref('')
+const uploadError = ref('')
+const isUploading = ref(false)
 const mySignalements = ref<any[]>([])
 const allSignalements = ref<any[]>([])
 const mapFilterMode = ref<'all' | 'mine'>('all')
@@ -303,12 +350,38 @@ const submitSignalement = async () => {
       throw new Error('Profil utilisateur introuvable.')
     }
 
+    // upload photos to Cloudinary (if any)
+    const photoUrls: string[] = []
+    if (photosFiles.value.length) {
+      isUploading.value = true
+      uploadProgress.value = 0
+      uploadStatus.value = 'Upload des photos...'
+      uploadError.value = ''
+
+      const total = photosFiles.value.length
+      for (let i = 0; i < total; i++) {
+        const f = photosFiles.value[i]
+        try {
+          const url = await uploadToCloudinary(f, (progress) => {
+            const overall = ((i + progress / 100) / total) * 100
+            uploadProgress.value = Math.round(overall)
+          })
+          if (url) photoUrls.push(url)
+        } catch (e) {
+          console.error('Upload failed for file', f, e)
+          uploadError.value =
+            (e as Error)?.message || 'Une ou plusieurs photos n\'ont pas pu être uploadées.'
+        }
+      }
+    }
+
     const payload = {
       position_: `${position.value.lat},${position.value.lng}`,
       commentaire: commentaire.value,
       is_deleted: false,
       Id_status: 1,
       Id_utilisateur: profileUserId,
+      photos: photoUrls,
       create_at: new Date().toISOString(),
       update_at: new Date().toISOString()
     }
@@ -317,6 +390,8 @@ const submitSignalement = async () => {
     await setDoc(ref, { ...payload, Id_signalement: ref.id })
 
     commentaire.value = ''
+    photosFiles.value = []
+    photoPreviews.value = []
     message.value = 'Signalement envoyé ✅'
     messageType.value = 'success'
     await loadMySignalements()
@@ -326,7 +401,131 @@ const submitSignalement = async () => {
     messageType.value = 'danger'
   } finally {
     loading.value = false
+    isUploading.value = false
+    uploadStatus.value = ''
   }
+}
+
+// Cloudinary unsigned upload helper
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`
+
+const uploadToCloudinary = (file: File, onProgress?: (progress: number) => void) =>
+  new Promise<string>((resolve, reject) => {
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      reject(new Error('Cloudinary not configured. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET'))
+      return
+    }
+    const form = new FormData()
+    form.append('file', file)
+    form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', CLOUDINARY_UPLOAD_URL)
+    xhr.upload.onprogress = (evt) => {
+      if (!evt.lengthComputable) return
+      const progress = Math.round((evt.loaded / evt.total) * 100)
+      onProgress?.(progress)
+    }
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error('Upload failed'))
+        return
+      }
+      try {
+        const data = JSON.parse(xhr.responseText)
+        resolve(data.secure_url as string)
+      } catch (err) {
+        reject(err)
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed'))
+    xhr.send(form)
+  })
+
+const onFilesSelected = (ev: Event) => {
+  const input = ev.target as HTMLInputElement
+  if (!input?.files) return
+  handleFiles(Array.from(input.files))
+  // clear the input to allow re-selecting same files later
+  input.value = ''
+}
+
+const handleFiles = (files: File[]) => {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue
+    photosFiles.value.push(f)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (e.target?.result) photoPreviews.value.push(String(e.target.result))
+    }
+    reader.readAsDataURL(f)
+  }
+}
+
+const addFileFromUri = async (uri: string, filename?: string) => {
+  const response = await fetch(uri)
+  const blob = await response.blob()
+  const name = filename ?? `photo-${Date.now()}.jpg`
+  const file = new File([blob], name, { type: blob.type || 'image/jpeg' })
+  handleFiles([file])
+}
+
+const pickNativeGallery = async () => {
+  const result = await Camera.pickImages({ quality: 80, limit: 10 })
+  for (const photo of result.photos) {
+    if (photo.webPath) {
+      await addFileFromUri(photo.webPath, `gallery-${Date.now()}.${photo.format || 'jpg'}`)
+    }
+  }
+}
+
+const takeNativePhoto = async () => {
+  await Camera.requestPermissions({ permissions: ['camera', 'photos'] })
+  const photo = await Camera.getPhoto({
+    quality: 80,
+    allowEditing: false,
+    resultType: CameraResultType.Uri,
+    source: CameraSource.Camera
+  })
+  if (photo.webPath) {
+    await addFileFromUri(photo.webPath, `camera-${Date.now()}.jpg`)
+  }
+}
+
+const openAddPhotoOptions = () => {
+  showPhotoOptions.value = true
+}
+
+const pickFromGallery = () => {
+  showPhotoOptions.value = false
+  if (Capacitor.isNativePlatform()) {
+    pickNativeGallery().catch((err) => {
+      console.error(err)
+      uploadError.value = 'Impossible d\'ouvrir la galerie.'
+    })
+    return
+  }
+  fileInputGallery.value?.click()
+}
+
+const takePhoto = () => {
+  showPhotoOptions.value = false
+  if (!Capacitor.isNativePlatform()) {
+    // web fallback: capture input (camera on mobile browsers)
+    fileInputCamera.value?.click()
+    return
+  }
+  takeNativePhoto().catch((err) => {
+    console.error(err)
+    uploadError.value = 'Impossible d\'ouvrir la caméra.'
+  })
+}
+
+const removePhotoAt = (index: number) => {
+  photosFiles.value.splice(index, 1)
+  photoPreviews.value.splice(index, 1)
 }
 
 const loadMySignalements = async () => {
@@ -575,6 +774,41 @@ onMounted(onMountedHandler)
 .button-stack {
   display: grid;
   gap: 0.75rem;
+}
+
+.photo-section {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.photo-options {
+  display: grid;
+  gap: 0.5rem;
+}
+.photo-previews {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.upload-status {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.preview-item {
+  width: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: center;
+}
+.preview-item img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
 }
 
 .neon-item {

@@ -57,6 +57,8 @@ import {
   IonText
 } from '@ionic/vue'
 
+defineOptions({ name: 'LoginView' })
+
 const router = useRouter()
 const email = ref('')
 const password = ref('')
