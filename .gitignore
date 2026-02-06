@@ -1,0 +1,21 @@
+# Dépendances
+**/vendor/
+**/node_modules/
+
+# Build/cache
+**/dist/
+**/build/
+**/.cache/
+
+# Logs
+**/*.log
+
+# Mobile (Android)
+**/android/
+**/android/.gradle/
+**/android/app/build/
+
+
+# OS
+.DS_Store
+Thumbs.db
