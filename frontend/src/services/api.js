@@ -248,6 +248,21 @@
     update: async (id, signalementData) => {
       try {
         const response = await api.put(`/signalements/${id}`, signalementData);
+        if (Object.prototype.hasOwnProperty.call(signalementData, 'Id_status')) {
+          const statusId = signalementData?.Id_status
+          if (statusId) {
+            try {
+              const status = await statusService.getById(statusId)
+              const nouveauStatus = status?.libelle ?? String(statusId)
+              await historiqueAvancementService.create({
+                nouveau_status: nouveauStatus,
+                Id_signalement: id
+              })
+            } catch (historyError) {
+              console.error('❌ Erreur lors de la création de l\'historique:', historyError)
+            }
+          }
+        }
         return response.data;
       }               catch (error) {   
         console.error('❌ Erreur lors de la mise à jour du signalement:', error);
@@ -264,6 +279,28 @@
       }
     }
   };
+
+  export const historiqueAvancementService = {
+    getAll: async () => {
+      try {
+        const response = await api.get('/historique-avancements')
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la récupération de l\'historique:', error)
+        throw error
+      }
+    },
+
+    create: async (payload) => {
+      try {
+        const response = await api.post('/historique-avancements', payload)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la création de l\'historique:', error)
+        throw error
+      }
+    }
+  }
   export const problemeService = {
     getAll: async () => {
       try {
