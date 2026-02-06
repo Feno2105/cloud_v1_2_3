@@ -5,6 +5,7 @@ import UserForm from '../components/UserForm'
 import UserList from '../components/UserList'
 import ProblemeModal from '../components/ProblemeModal'
 import SignalementAssignModal from '../components/SignalementAssignModal'
+import HistoriqueAvancementModal from '../components/HistoriqueAvancementModal'
 import Map from '../components/Map'
 import './Dashboard.css'
 
@@ -12,6 +13,7 @@ function Dashboard() {
   const navigate = useNavigate()
   const [showUserForm, setShowUserForm] = useState(false)
   const [showUserList, setShowUserList] = useState(false)
+  const [showHistorique, setShowHistorique] = useState(false)
   const [problemes, setProblemes] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusOptions, setStatusOptions] = useState([])
@@ -186,6 +188,7 @@ function Dashboard() {
           <button className="nav-item active">Dashboard</button>
           <button className="nav-item" onClick={() => setShowUserList(true)}>Utilisateurs</button>
           <button className="nav-item" onClick={() => setShowUserForm(true)}>Créer un utilisateur</button>
+          <button className="nav-item" onClick={() => setShowHistorique(true)}>Historique</button>
           <button className="nav-item" onClick={handleLogout}>Déconnexion</button>
         </nav>
         <div className="sidebar-card">
@@ -408,6 +411,7 @@ function Dashboard() {
 
       {showUserForm && <UserForm onClose={() => setShowUserForm(false)} onUserCreated={handleUserCreated} />}
       {showUserList && <UserList onClose={() => setShowUserList(false)} />}
+      {showHistorique && <HistoriqueAvancementModal onClose={() => setShowHistorique(false)} />}
       {selectedProbleme && <ProblemeModal probleme={selectedProbleme} onClose={() => setSelectedProbleme(null)} onUpdate={handleProblemeUpdate} />}
       {selectedSignalement && (
         <SignalementAssignModal

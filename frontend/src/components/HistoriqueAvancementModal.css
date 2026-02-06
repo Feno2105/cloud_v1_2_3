@@ -1,0 +1,67 @@
+.historique-modal {
+  max-width: 980px;
+  width: 92%;
+}
+
+.historique-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin: 16px 0 20px;
+}
+
+.historique-filters .filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.historique-filters label {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.historique-filters input,
+.historique-filters select {
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  color: #e2e8f0;
+  padding: 10px 12px;
+}
+
+.historique-content {
+  min-height: 240px;
+}
+
+.historique-table-wrapper {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  overflow: auto;
+}
+
+.historique-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.historique-table th,
+.historique-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  font-size: 0.95rem;
+}
+
+.historique-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+}
+
+.historique-table tbody tr:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
