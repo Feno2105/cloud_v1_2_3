@@ -57,14 +57,25 @@ class DatabaseSeeder extends Seeder
                 'niveau' => 1,
                 'create_at' => $now,
                 'update_at' => $now,
-                'is_deleted' => 'non'
+                'is_deleted' => 'non',
+                'avancement'   => 0.00
+
             ],
             [
                 'libelle' => 'En cours',
                 'niveau' => 2,
                 'create_at' => $now,
                 'update_at' => $now,
-                'is_deleted' => 'non'
+                'is_deleted' => 'non',
+                'avancement'   => 50.00
+            ],
+            [
+                'libelle' => 'Terminé',
+                'niveau' => 3,
+                'create_at' => $now,
+                'update_at' => $now,
+                'is_deleted' => 'non',
+                'avancement'   => 100.00
             ]
         ]);
 
