@@ -128,8 +128,7 @@ class DatabaseSeeder extends Seeder
                 'is_deleted' => false,
                 'budget' => 15000.50,
                 'surface' => 120.75,
-                'Id_entreprise' => 1,
-                'Id_signalement' => 1
+                'Id_entreprise' => 1
             ],
             [
                 'create_at' => $now,
@@ -137,8 +136,7 @@ class DatabaseSeeder extends Seeder
                 'is_deleted' => false,
                 'budget' => 8000.00,
                 'surface' => 60.50,
-                'Id_entreprise' => 2,
-                'Id_signalement' => 2
+                'Id_entreprise' => 2
             ]
         ]);
     }
