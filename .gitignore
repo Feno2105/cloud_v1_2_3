@@ -15,6 +15,7 @@
 **/android/.gradle/
 **/android/app/build/
 
+
 # OS
 .DS_Store
 Thumbs.db
