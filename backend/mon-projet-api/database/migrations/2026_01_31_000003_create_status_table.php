@@ -12,6 +12,7 @@ return new class extends Migration
             $table->increments('Id_status');
             $table->string('libelle', 50)->nullable();
             $table->integer('niveau')->nullable();
+            $table->decimal('avancement', 15, 2)->nullable();
             $table->dateTime('create_at')->nullable();
             $table->dateTime('update_at')->nullable();
             $table->string('is_deleted', 50)->nullable();
