@@ -193,6 +193,12 @@
       </ion-toolbar>
     </ion-footer>
   </ion-page>
+
+  <ion-modal :is-open="showImageModal" @didDismiss="showImageModal = false" class="image-modal">
+    <div class="image-modal-content" @click="showImageModal = false">
+      <img :src="selectedImage" alt="photo" @click.stop />
+    </div>
+  </ion-modal>
 </template>
 
 <script setup lang="ts">
@@ -224,7 +230,8 @@ import {
   IonText,
   IonList,
   IonLabel,
-  IonProgressBar
+  IonProgressBar,
+  IonModal
   
 } from '@ionic/vue'
 
@@ -245,6 +252,8 @@ const uploadProgress = ref(0)
 const uploadStatus = ref('')
 const uploadError = ref('')
 const isUploading = ref(false)
+const showImageModal = ref(false)
+const selectedImage = ref('')
 const mySignalements = ref<any[]>([])
 const allSignalements = ref<any[]>([])
 const mapFilterMode = ref<'all' | 'mine'>('all')
@@ -668,6 +677,19 @@ const initMap = () => {
     updateMarkers()
     showMapHint.value = false
   })
+  map.on('popupopen', (event: any) => {
+    const popupEl = event?.popup?.getElement?.()
+    if (!popupEl) return
+    const images = popupEl.querySelectorAll('img[data-photo]')
+    images.forEach((img: any) => {
+      img.addEventListener('click', () => {
+        const url = img.getAttribute('data-photo')
+        if (!url) return
+        selectedImage.value = url
+        showImageModal.value = true
+      })
+    })
+  })
   updateMarkers()
 }
 
@@ -712,7 +734,7 @@ const updateMarkers = () => {
           ${photoList
             .map(
               (url: string) =>
-                `<img src="${url}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid rgba(148,163,184,0.25)" />`
+                `<img data-photo="${url}" src="${url}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid rgba(148,163,184,0.25);cursor:pointer" />`
             )
             .join('')}
         </div>
@@ -838,6 +860,26 @@ onMounted(onMountedHandler)
   display: grid;
   gap: 0.35rem;
   margin-top: 0.5rem;
+}
+
+.image-modal::part(content) {
+  --background: rgba(2, 6, 23, 0.85);
+}
+
+.image-modal-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.image-modal-content img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .preview-item {
