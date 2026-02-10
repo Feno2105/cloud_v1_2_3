@@ -15,6 +15,7 @@ return new class extends Migration
             $table->text('position_')->nullable();
             $table->string('commentaire', 200)->nullable();
             $table->boolean('is_deleted')->default(false);
+            $table->integer('niveau')->nullable();
             $table->unsignedInteger('Id_status');
             $table->unsignedInteger('Id_utilisateur');
 

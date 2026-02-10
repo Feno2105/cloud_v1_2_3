@@ -8,19 +8,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('status', function (Blueprint $table) {
-            $table->increments('Id_status');
-            $table->string('libelle', 50)->nullable();
-            $table->integer('niveau')->nullable();
-            $table->decimal('avancement', 15, 2)->nullable();
+        Schema::create('prix', function (Blueprint $table) {
+            $table->increments('Id_prix');
             $table->dateTime('create_at')->nullable();
             $table->dateTime('update_at')->nullable();
-            $table->string('is_deleted', 50)->nullable();
+            $table->dateTime('date_fin')->nullable();
+            $table->decimal('valeur', 15, 2)->nullable();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('status');
+        Schema::dropIfExists('prix');
     }
 };

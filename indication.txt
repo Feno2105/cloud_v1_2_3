@@ -1,0 +1,16 @@
+vous etes a la racine du fichier : 
+    Lance d abord : docker compose up --build
+
+puis pour acceder a l application utiliser les liens : 
+    -backend(api) : -localhost:8000
+               -swagger localhost:8000/api/documentation
+
+    -frontend(web) : -localhost:5173/ 
+
+    -apk : -localhost:8100/
+
+Utilisateur manager par defaut : admin@example.com , mdp : password qui se trouve par defaut dans le seeder
+
+Pas d utilisateur par defaut pour l application il faut cree cote web.
+
+au cas ou le docker compose n expose pas les ports s il vous plais essayer de faire npm run dev pour le web dans frontend et ionic serve pour l apk dans mapk2/ionic-app

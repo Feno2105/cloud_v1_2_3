@@ -41,6 +41,17 @@ const normalizeUser = (docSnapOrData) => {
   }
 }
 
+const normalizePhoto = (docSnapOrData) => {
+  const data = typeof docSnapOrData.data === 'function' ? docSnapOrData.data() : docSnapOrData
+  const docId = typeof docSnapOrData.id === 'string' ? docSnapOrData.id : undefined
+  const id_photo = data.Id_photo ?? data.id_photo ?? data.id ?? docId
+  return {
+    ...data,
+    Id_photo: id_photo ? toStringId(id_photo) : undefined,
+    __docId: docId
+  }
+}
+
 const migrateDocId = async (collectionName, oldId, newId, data) => {
   if (!newId) return null
   const normalizedNewId = toStringId(newId)
@@ -104,5 +115,28 @@ export const firebaseService = {
 
   migrateUserId: async (oldId, newId, user) =>
     migrateDocId('users', oldId, newId, user),
+
+  // récupérer photos
+  getPhotos: async () => {
+    const snapshot = await getDocs(collection(db, 'photo'))
+    return snapshot.docs.map(d => normalizePhoto(d)).filter(p => p.Id_photo)
+  },
+
+  addOrUpdatePhoto: async (photo) => {
+    const normalized = normalizePhoto(photo)
+    const id = normalized.Id_photo
+    if (!id) return null
+    await setDoc(doc(db, 'photo', id), cleanUndefined(normalized), { merge: true })
+    return id
+  },
+
+  deletePhoto: async (id) => {
+    const normalizedId = toStringId(id)
+    if (!normalizedId) return
+    await deleteDoc(doc(db, 'photo', normalizedId))
+  },
+
+  migratePhotoId: async (oldId, newId, photo) =>
+    migrateDocId('photo', oldId, newId, photo),
 
 }

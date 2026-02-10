@@ -264,6 +264,110 @@
       }
     }
   };
+
+  export const historiqueAvancementService = {
+    getAll: async () => {
+      try {
+        const response = await api.get('/historique-avancements')
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la récupération de l\'historique:', error)
+        throw error
+      }
+    },
+
+    create: async (payload) => {
+      try {
+        const response = await api.post('/historique-avancements', payload)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la création de l\'historique:', error)
+        throw error
+      }
+    }
+  }
+
+  export const photoService = {
+    getAll: async () => {
+      try {
+        const response = await api.get('/photos')
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la récupération des photos:', error)
+        throw error
+      }
+    },
+
+    create: async (photoData) => {
+      try {
+        const response = await api.post('/photos', photoData)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la création de la photo:', error)
+        throw error
+      }
+    },
+
+    update: async (id, photoData) => {
+      try {
+        const response = await api.put(`/photos/${id}`, photoData)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la mise à jour de la photo:', error)
+        throw error
+      }
+    },
+
+    delete: async (id) => {
+      try {
+        await api.delete(`/photos/${id}`)
+      } catch (error) {
+        console.error('❌ Erreur lors de la suppression de la photo:', error)
+        throw error
+      }
+    }
+  }
+
+  export const prixService = {
+    getAll: async () => {
+      try {
+        const response = await api.get('/prix')
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la récupération des prix:', error)
+        throw error
+      }
+    },
+
+    create: async (payload) => {
+      try {
+        const response = await api.post('/prix', payload)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la création du prix:', error)
+        throw error
+      }
+    },
+
+    update: async (id, payload) => {
+      try {
+        const response = await api.put(`/prix/${id}`, payload)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la mise à jour du prix:', error)
+        throw error
+      }
+    },
+
+    delete: async (id) => {
+      try {
+        await api.delete(`/prix/${id}`)
+      } catch (error) {
+        console.error('❌ Erreur lors de la suppression du prix:', error)
+        throw error
+      }
+    }
+  }
   export const problemeService = {
     getAll: async () => {
       try {
@@ -343,6 +447,7 @@
           const status = signalement?.status
             ?? statusMap.get(String(signalement?.Id_status ?? signalement?.id_status ?? ''))
           const user = signalement?.utilisateur
+          const photos = Array.isArray(signalement?.photos) ? signalement.photos : []
 
           const { latitude, longitude } = parsePosition(signalement?.position_)
           const statusLabel = status?.libelle ?? ''
@@ -362,7 +467,8 @@
             date_signalement: signalement?.create_at ?? signalement?.update_at ?? p.create_at,
             created_at: p.create_at ?? p.created_at,
             updated_at: p.update_at ?? p.updated_at,
-            signale_par_email: user?.email
+            signale_par_email: user?.email,
+            photos
           }
         })
 

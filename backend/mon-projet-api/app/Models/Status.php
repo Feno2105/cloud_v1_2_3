@@ -18,6 +18,7 @@ class Status extends Model
     protected $fillable = [
         'libelle',
         'niveau',
+        'avancement',
         'is_deleted'
     ];
 

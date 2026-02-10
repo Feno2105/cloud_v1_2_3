@@ -31,7 +31,7 @@ const createStatusIcon = (status) =>
     iconAnchor: [10, 10]
   })
 
-function Map({ center = [-18.8792, 47.5079], zoom = 13, height = '500px', markers = [], onMarkerClick }) {
+function Map({ center = [-18.8792, 47.5079], zoom = 13, height = '500px', markers = [], onMarkerClick, onMarkerDoubleClick }) {
   return (
     <div className="map-wrapper" style={{ height }}>
       <MapContainer
@@ -58,6 +58,11 @@ function Map({ center = [-18.8792, 47.5079], zoom = 13, height = '500px', marker
               click: () => {
                 if (onMarkerClick && marker.data) {
                   onMarkerClick(marker.data);
+                }
+              },
+              dblclick: () => {
+                if (onMarkerDoubleClick && marker.data) {
+                  onMarkerDoubleClick(marker.data);
                 }
               },
               mouseover: (e) => {

@@ -10,9 +10,9 @@ const normalizeLabel = (value) =>
 
 function SignalementAssignModal({ signalement, onClose, onAssigned }) {
   const [formData, setFormData] = useState({
-    budget: '',
     surface: '',
-    Id_entreprise: ''
+    Id_entreprise: '',
+    niveau: ''
   })
   const [entreprises, setEntreprises] = useState([])
   const [statuses, setStatuses] = useState([])
@@ -39,6 +39,15 @@ function SignalementAssignModal({ signalement, onClose, onAssigned }) {
     loadData()
   }, [signalement])
 
+  useEffect(() => {
+    if (!signalement) return
+    const current = signalement.niveau ?? 0
+    setFormData((prev) => ({
+      ...prev,
+      niveau: current > 0 ? String(current) : ''
+    }))
+  }, [signalement])
+
   const handleChange = (event) => {
     const { name, value } = event.target
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -54,7 +63,6 @@ function SignalementAssignModal({ signalement, onClose, onAssigned }) {
     try {
       const payload = {
         Id_entreprise: parseInt(formData.Id_entreprise),
-        budget: formData.budget ? parseFloat(formData.budget) : undefined,
         surface: formData.surface ? parseFloat(formData.surface) : undefined,
         Id_signalement: signalement.Id_signalement
       }
@@ -63,9 +71,16 @@ function SignalementAssignModal({ signalement, onClose, onAssigned }) {
 
       const inProgress = statuses.find((status) => normalizeLabel(status.libelle) === 'EN_COURS')
       if (inProgress?.Id_status) {
-        await signalementService.update(signalement.Id_signalement, {
+        const updatePayload = {
           Id_status: inProgress.Id_status
-        })
+        }
+
+        const currentNiveau = signalement.niveau ?? 0
+        if (currentNiveau === 0 && formData.niveau) {
+          updatePayload.niveau = parseInt(formData.niveau, 10)
+        }
+
+        await signalementService.update(signalement.Id_signalement, updatePayload)
       }
 
       if (onAssigned) {
@@ -130,16 +145,29 @@ function SignalementAssignModal({ signalement, onClose, onAssigned }) {
           </div>
 
           <div className="form-group">
-            <label>Budget (MGA)</label>
-            <input
-              type="number"
-              name="budget"
-              value={formData.budget}
-              onChange={handleChange}
-              min="0"
-              step="1000"
-              disabled={loading}
-            />
+            <label>Niveau</label>
+            {Number(signalement?.niveau ?? 0) === 0 ? (
+              <input
+                type="number"
+                name="niveau"
+                value={formData.niveau}
+                onChange={handleChange}
+                min="1"
+                max="10"
+                step="1"
+                placeholder="Ex: 1"
+                disabled={loading}
+              />
+            ) : (
+              <input
+                type="number"
+                name="niveau"
+                value={signalement?.niveau}
+                min="1"
+                max="10"
+                disabled
+              />
+            )}
           </div>
 
           <div className="form-actions">

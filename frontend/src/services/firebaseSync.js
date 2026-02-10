@@ -1,6 +1,6 @@
 // services/firebaseSync.js
 import { firebaseService } from './firebaseService';
-import { problemeService, userService, signalementService, roleService } from './api';
+import { problemeService, userService, signalementService, roleService, photoService } from './api';
 
 const toStringId = (value) => (value === undefined || value === null ? '' : String(value))
 
@@ -67,6 +67,7 @@ const nowIso = () => new Date().toISOString()
 const getProblemeId = (p) => toStringId(p.Id_probleme ?? p.id_probleme ?? p.id)
 const getSignalementId = (s) => toStringId(s.Id_signalement ?? s.id_signalement ?? s.id)
 const getUserId = (u) => toStringId(u.Id_utilisateur ?? u.id ?? u.user_id ?? u.id_user)
+const getPhotoId = (p) => toStringId(p.Id_photo ?? p.id_photo ?? p.id)
 
 export const syncService = {
 
@@ -77,6 +78,7 @@ export const syncService = {
         throw new Error('Aucune connexion internet')
       }
       console.log('🔄 Synchronisation commencée...');
+      const signalementIdMap = new Map()
 
       // 1️⃣ Problèmes routiers (Local -> Firebase, puis Firebase -> Local)
       const [apiProblemes, fbProblemes] = await Promise.all([
@@ -208,9 +210,10 @@ export const syncService = {
         if (fb && fbDeleted && getUpdatedAt(fb) > getUpdatedAt(s)) {
           continue
         }
-        if (!fb || shouldSync(s, fb, ['create_at', 'update_at', 'created_at', 'updated_at'])) {
+        if (!fb || shouldSync(s, fb, ['create_at', 'update_at', 'created_at', 'updated_at', 'status', 'utilisateur', 'problemes', 'photos'])) {
           console.log('➕/🔁 Sync signalement vers Firebase:', id)
-          await firebaseService.addOrUpdateSignalement({ ...s, Id_signalement: id, is_deleted: localDeleted, update_at: nowIso() })
+          const payload = stripFields(s, ['status', 'utilisateur', 'problemes', 'photos'])
+          await firebaseService.addOrUpdateSignalement({ ...payload, Id_signalement: id, is_deleted: localDeleted, update_at: nowIso() })
         }
       }
 
@@ -222,25 +225,145 @@ export const syncService = {
         if (!local) {
           if (fbDeleted) continue
           console.log('➕ Sync signalement vers API:', id)
-          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement'])
+          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement', 'status', 'utilisateur', 'problemes', 'photos'])
           const created = await signalementService.create(payload)
           const localId = created?.Id_signalement ?? created?.id_signalement
           if (localId && toStringId(localId) !== toStringId(id)) {
+            signalementIdMap.set(toStringId(id), toStringId(localId))
             await firebaseService.migrateSignalementId(
               fs.__docId ?? id,
               toStringId(localId),
               { ...fs, Id_signalement: toStringId(localId), update_at: nowIso() }
             )
           }
-        } else if (shouldSync(fs, local, ['create_at', 'update_at', 'created_at', 'updated_at'])) {
+        } else if (shouldSync(fs, local, ['create_at', 'update_at', 'created_at', 'updated_at', 'status', 'utilisateur', 'problemes', 'photos'])) {
           if (fbDeleted) {
             console.log('🗑️ Suppression logique signalement vers API:', id)
             await signalementService.update(id, { is_deleted: true })
             continue
           }
           console.log('🔁 Mise à jour signalement vers API:', id)
-          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement'])
+          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement', 'photos', 'status', 'utilisateur', 'problemes'])
           await signalementService.update(id, payload)
+        }
+      }
+
+      // 4️⃣ Photos (Firebase -> Local + Local -> Firebase)
+      const [apiPhotos, fbPhotos] = await Promise.all([
+        photoService.getAll(),
+        firebaseService.getPhotos()
+      ])
+      const apiPhotosMap = new Map(apiPhotos.map(p => [getPhotoId(p), p]))
+      const fbPhotosMap = new Map(fbPhotos.map(p => [getPhotoId(p), p]))
+
+      if (signalementIdMap.size) {
+        const migratedPhotoIds = new Set()
+        for (const [index, photo] of fbPhotos.entries()) {
+          const oldSignalementId = toStringId(photo.Id_signalement)
+          const newSignalementId = signalementIdMap.get(oldSignalementId)
+          if (!newSignalementId || oldSignalementId === newSignalementId) continue
+          const oldPhotoId = getPhotoId(photo)
+          const basePhotoId = oldPhotoId || photo.__docId || `photo_${index + 1}`
+          const newPhotoId = `${newSignalementId}_${basePhotoId}`
+          await firebaseService.migratePhotoId(
+            photo.__docId ?? oldPhotoId,
+            newPhotoId,
+            {
+              ...photo,
+              Id_photo: newPhotoId,
+              Id_signalement: newSignalementId,
+              update_at: nowIso()
+            }
+          )
+          migratedPhotoIds.add(newPhotoId)
+          photo.Id_photo = newPhotoId
+          photo.Id_signalement = newSignalementId
+
+          if (oldPhotoId && oldPhotoId !== newPhotoId) {
+            if (apiPhotosMap.has(oldPhotoId)) {
+              await photoService.delete(oldPhotoId)
+              apiPhotosMap.delete(oldPhotoId)
+            }
+          }
+
+          const localPhoto = apiPhotosMap.get(oldPhotoId)
+          if (localPhoto && toStringId(localPhoto.Id_signalement) !== newSignalementId) {
+            await photoService.update(oldPhotoId, { Id_signalement: newSignalementId })
+            localPhoto.Id_signalement = newSignalementId
+          }
+        }
+
+        for (const photo of fbPhotos) {
+          const oldSignalementId = toStringId(photo.Id_signalement)
+          if (!signalementIdMap.has(oldSignalementId)) continue
+          const photoId = getPhotoId(photo)
+          if (migratedPhotoIds.has(photoId)) continue
+          await firebaseService.deletePhoto(photo.__docId ?? photoId)
+        }
+      }
+
+      for (const p of apiPhotos) {
+        const id = getPhotoId(p)
+        if (!id) continue
+        const fb = fbPhotosMap.get(id)
+        const localDeleted = isDeleted(p)
+        const fbDeleted = isDeleted(fb)
+        if (fb && fbDeleted && getUpdatedAt(fb) > getUpdatedAt(p)) {
+          continue
+        }
+        if (!fb || shouldSync(p, fb, ['create_at', 'update_at', 'created_at', 'updated_at', 'lien_local'])) {
+          console.log('➕/🔁 Sync photo vers Firebase:', id)
+          const payload = { ...p, Id_photo: id, is_deleted: localDeleted, update_at: nowIso() }
+          delete payload.lien_local
+          await firebaseService.addOrUpdatePhoto(payload)
+        }
+      }
+
+      for (const fp of fbPhotos) {
+        const id = getPhotoId(fp)
+        if (!id) continue
+        const local = apiPhotosMap.get(id)
+        const fbDeleted = isDeleted(fp)
+        if (!local) {
+          if (fbDeleted) continue
+          console.log('➕ Sync photo vers API:', id)
+          const mappedSignalementId = signalementIdMap.get(toStringId(fp.Id_signalement))
+          const payload = stripFields(fp, ['id', 'id_photo', 'Id_photo'])
+          if (mappedSignalementId) {
+            payload.Id_signalement = mappedSignalementId
+          }
+          const created = await photoService.create(payload)
+          const localId = created?.Id_photo ?? created?.id_photo
+          if (localId && toStringId(localId) !== toStringId(id)) {
+            await firebaseService.migratePhotoId(
+              fp.__docId ?? id,
+              toStringId(localId),
+              {
+                ...fp,
+                Id_photo: toStringId(localId),
+                Id_signalement: payload.Id_signalement ?? fp.Id_signalement,
+                update_at: nowIso()
+              }
+            )
+          }
+        } else if (shouldSync(fp, local, ['create_at', 'update_at', 'created_at', 'updated_at', 'lien_local'])) {
+          if (fbDeleted) {
+            console.log('🗑️ Suppression logique photo vers API:', id)
+            await photoService.update(id, { is_deleted: true })
+            continue
+          }
+          console.log('🔁 Mise à jour photo vers API:', id)
+          const mappedSignalementId = signalementIdMap.get(toStringId(fp.Id_signalement))
+          const payload = stripFields(fp, ['id', 'id_photo', 'Id_photo'])
+          if (mappedSignalementId) {
+            payload.Id_signalement = mappedSignalementId
+          }
+          await photoService.update(id, payload)
+        } else {
+          const mappedSignalementId = signalementIdMap.get(toStringId(fp.Id_signalement))
+          if (mappedSignalementId && toStringId(local.Id_signalement) !== mappedSignalementId) {
+            await photoService.update(id, { Id_signalement: mappedSignalementId })
+          }
         }
       }
 

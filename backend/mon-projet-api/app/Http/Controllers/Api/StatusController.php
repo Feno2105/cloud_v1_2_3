@@ -37,6 +37,7 @@ class StatusController extends Controller
             properties: [
                 new OA\Property(property: "libelle", type: "string", example: "Nouveau"),
                 new OA\Property(property: "niveau", type: "integer", example: 1),
+                new OA\Property(property: "avancement", type: "number", format: "decimal", example: 25.5),
                 new OA\Property(property: "is_deleted", type: "string", example: "non")
             ]
         )
@@ -47,6 +48,7 @@ class StatusController extends Controller
         $request->validate([
             'libelle' => 'required|string|max:50',
             'niveau' => 'required|integer',
+            'avancement' => 'nullable|numeric',
             'is_deleted' => 'nullable|string|max:50'
         ]);
 
@@ -80,6 +82,7 @@ class StatusController extends Controller
         $request->validate([
             'libelle' => 'sometimes|string|max:50',
             'niveau' => 'sometimes|integer',
+            'avancement' => 'nullable|numeric',
             'is_deleted' => 'nullable|string|max:50'
         ]);
 

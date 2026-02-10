@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\HistoriqueAvancement;
 use App\Models\Signalement;
+use App\Models\Status;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(
@@ -23,7 +26,7 @@ class SignalementController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(
-            Signalement::with(['status', 'utilisateur', 'problemes'])->get()
+            Signalement::with(['status', 'utilisateur', 'problemes', 'photos'])->get()
         );
     }
 
@@ -55,6 +58,7 @@ class SignalementController extends Controller
                 new OA\Property(property: "position_", type: "string", example: "-18.8792,47.5079"),
                 new OA\Property(property: "commentaire", type: "string", example: "Route dégradée"),
                 new OA\Property(property: "is_deleted", type: "boolean", example: false),
+                new OA\Property(property: "niveau", type: "integer", example: 1),
                 new OA\Property(property: "Id_status", type: "integer", example: 1),
                 new OA\Property(property: "Id_utilisateur", type: "integer", example: 1)
             ]
@@ -67,6 +71,7 @@ class SignalementController extends Controller
             'position_' => 'nullable|string',
             'commentaire' => 'nullable|string|max:200',
             'is_deleted' => 'sometimes|boolean',
+            'niveau' => 'nullable|integer',
             'Id_status' => 'required|integer|exists:status,Id_status',
             'Id_utilisateur' => 'required|integer|exists:utilisateur,Id_utilisateur'
         ]);
@@ -84,7 +89,9 @@ class SignalementController extends Controller
     #[OA\Response(response: 200, description: "Signalement trouvé")]
     public function show(int $id): JsonResponse
     {
-        return response()->json(Signalement::findOrFail($id));
+        return response()->json(
+            Signalement::with(['status', 'utilisateur', 'problemes', 'photos'])->findOrFail($id)
+        );
     }
 
     #[OA\Put(
@@ -102,12 +109,27 @@ class SignalementController extends Controller
             'position_' => 'nullable|string',
             'commentaire' => 'nullable|string|max:200',
             'is_deleted' => 'sometimes|boolean',
+            'niveau' => 'nullable|integer',
             'Id_status' => 'sometimes|integer|exists:status,Id_status',
             'Id_utilisateur' => 'sometimes|integer|exists:utilisateur,Id_utilisateur'
         ]);
 
-        $signalement->update($request->all());
-        return response()->json($signalement);
+        $result = DB::transaction(function () use ($request, $signalement) {
+            if ($request->has('Id_status') && (int) $request->Id_status !== (int) $signalement->Id_status) {
+                $status = Status::find($request->Id_status);
+                if ($status) {
+                    HistoriqueAvancement::create([
+                        'nouveau_status' => $status->libelle,
+                        'Id_signalement' => $signalement->Id_signalement
+                    ]);
+                }
+            }
+
+            $signalement->update($request->all());
+            return $signalement;
+        });
+
+        return response()->json($result);
     }
 
     #[OA\Delete(
