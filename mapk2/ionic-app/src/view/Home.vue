@@ -688,12 +688,36 @@ const updateMarkers = () => {
   }
 
   const items = mapFilterMode.value === 'all' ? allSignalements.value : mySignalements.value
+  const extractPhotoList = (value: any) => {
+    if (!value) return [] as string[]
+    if (Array.isArray(value)) return value.filter(Boolean)
+    if (typeof value === 'string') return value.trim() ? [value] : []
+    if (typeof value === 'object') return Object.values(value).filter(Boolean) as string[]
+    return [] as string[]
+  }
+
   items.forEach((item) => {
     if (!item.position_) return
     const [latRaw, lngRaw] = String(item.position_).split(',')
     const lat = parseFloat(latRaw)
     const lng = parseFloat(lngRaw)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    const photoList = extractPhotoList(
+      item.photos ?? item.photo ?? item.images ?? item.image ?? item.urls ?? item.url
+    )
+    const photosCountLine = `<br />Photos: ${photoList.length}`
+    const photosHtml = photoList.length
+      ? `
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+          ${photoList
+            .map(
+              (url: string) =>
+                `<img src="${url}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid rgba(148,163,184,0.25)" />`
+            )
+            .join('')}
+        </div>
+      `
+      : ''
     const statusLabel =
       item?.status?.libelle ??
       item?.status?.label ??
@@ -706,6 +730,8 @@ const updateMarkers = () => {
         ${item.commentaire ? item.commentaire : 'Sans commentaire'}<br />
         Statut: ${statusLabel}<br />
         Créé le: ${createdAt}
+        ${photosCountLine}
+        ${photosHtml}
       </div>
     `
     L.marker([lat, lng]).bindPopup(popup).addTo(markersLayer)
@@ -813,6 +839,7 @@ onMounted(onMountedHandler)
   gap: 0.35rem;
   margin-top: 0.5rem;
 }
+
 .preview-item {
   width: 100px;
   display: flex;
