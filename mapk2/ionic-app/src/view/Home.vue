@@ -131,6 +131,53 @@
             </ion-card>
           </div>
         </section>
+
+        <section v-show="activeSection === 'notifications'" id="section-notifications" class="section-block info-section">
+          <div class="info-wrapper">
+            <ion-card class="neon-card info-card">
+              <ion-card-header>
+                <ion-card-title>Notifications</ion-card-title>
+                <ion-card-subtitle>Historique des alertes reçues</ion-card-subtitle>
+              </ion-card-header>
+              <ion-card-content>
+                <div class="button-stack">
+                  <ion-button expand="block" class="neon-button secondary" @click="handleMarkAllRead">
+                    Tout marquer comme lu
+                  </ion-button>
+                  <ion-button expand="block" class="neon-button danger" @click="handleClearNotifications">
+                    Vider les notifications
+                  </ion-button>
+                </div>
+
+                <div v-if="!notifications.length" class="empty-state">
+                  <p>Aucune notification.</p>
+                  <p class="muted">Les notifications reçues apparaîtront ici.</p>
+                </div>
+                <ion-list v-else class="neon-list info-list">
+                  <ion-item
+                    v-for="item in notifications"
+                    :key="item.id"
+                    class="neon-item info-item"
+                    lines="none"
+                  >
+                    <ion-label class="info-label">
+                      <div class="info-row">
+                        <h3>
+                          {{ item.title }}
+                          <span v-if="!item.read" class="info-badge">Nouveau</span>
+                        </h3>
+                        <span class="info-date">{{ formatDate(item.receivedAt) }}</span>
+                      </div>
+                      <div class="info-detail">
+                        <span class="info-detail-value">{{ item.body || '—' }}</span>
+                      </div>
+                    </ion-label>
+                  </ion-item>
+                </ion-list>
+              </ion-card-content>
+            </ion-card>
+          </div>
+        </section>
       </div>
     </ion-content>
 
@@ -140,6 +187,10 @@
           <ion-button class="bottom-button" :class="{ active: activeSection === 'map' }" @click="setSection('map')">Carte</ion-button>
           <ion-button class="bottom-button" :class="{ active: activeSection === 'signal' }" @click="setSection('signal')">Signaler</ion-button>
           <ion-button class="bottom-button" :class="{ active: activeSection === 'info' }" @click="setSection('info')">Information</ion-button>
+          <ion-button class="bottom-button" :class="{ active: activeSection === 'notifications' }" @click="setSection('notifications')">
+            Notifications
+            <span v-if="unreadCount" class="nav-badge">{{ unreadCount }}</span>
+          </ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-footer>
@@ -147,11 +198,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { addDoc, collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { fetchUserProfile, getCachedProfile, getCurrentUser, logoutMobile } from '../services/mobileAuth'
+import { clearNotifications, getNotifications, markAllRead } from '../services/notificationStore'
 import L from 'leaflet'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
@@ -186,7 +238,7 @@ const mySignalements = ref<any[]>([])
 const allSignalements = ref<any[]>([])
 const mapFilterMode = ref<'all' | 'mine'>('all')
 const contentRef = ref<any>(null)
-const activeSection = ref<'map' | 'signal' | 'info'>('map')
+const activeSection = ref<'map' | 'signal' | 'info' | 'notifications'>('map')
 const showMapHint = ref(true)
 const mapContainer = ref<HTMLDivElement | null>(null)
 const pendingPosition = ref<{ lat: number; lng: number } | null>(null)
@@ -194,6 +246,35 @@ const isPicking = ref(true)
 let map: any | null = null
 let markersLayer: any | null = null
 const tileServerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+type NotificationItem = {
+  id: string
+  title: string
+  body: string
+  receivedAt: string
+  read: boolean
+}
+
+const notifications = ref<NotificationItem[]>([])
+const unreadCount = computed(() => notifications.value.filter((item) => !item.read).length)
+
+const refreshNotifications = () => {
+  notifications.value = getNotifications()
+}
+
+const handleMarkAllRead = () => {
+  markAllRead()
+  refreshNotifications()
+}
+
+const handleClearNotifications = () => {
+  clearNotifications()
+  refreshNotifications()
+}
+
+const handleNotificationsUpdated = () => {
+  refreshNotifications()
+}
 
 const normalizeUserIdValue = (raw: unknown) => {
   if (raw === null || raw === undefined) return null
@@ -497,6 +578,7 @@ const updateMarkers = () => {
 }
 
 const onMountedHandler = async () => {
+  refreshNotifications()
   await handleOfflineRedirect()
   if (!navigator.onLine) return
   initMap()
@@ -504,9 +586,15 @@ const onMountedHandler = async () => {
   await loadAllSignalements()
   await openMapPicker()
   window.addEventListener('offline', handleOfflineRedirect)
+  window.addEventListener('notifications-updated', handleNotificationsUpdated)
 }
 
 onMounted(onMountedHandler)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('offline', handleOfflineRedirect)
+  window.removeEventListener('notifications-updated', handleNotificationsUpdated)
+})
 </script>
 
 <style scoped>
@@ -572,6 +660,11 @@ onMounted(onMountedHandler)
   --color: #e2e8f0;
 }
 
+.neon-button.danger {
+  --background: linear-gradient(120deg, #f87171, #fb7185);
+  --color: #0b1120;
+}
+
 .button-stack {
   display: grid;
   gap: 0.75rem;
@@ -586,6 +679,26 @@ onMounted(onMountedHandler)
 
 .neon-list {
   background: transparent;
+}
+
+.nav-badge {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  background: #f97316;
+  color: #0b1120;
+  font-weight: 700;
+}
+
+.info-badge {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: #38bdf8;
+  color: #0b1120;
+  font-weight: 700;
 }
 
 .info-section {

@@ -95,6 +95,7 @@ function Dashboard() {
   }
 
   const handleMarkerClick = (probleme) => {
+    if (!probleme?.Id_probleme) return
     console.log('🗺️ Marqueur cliqué:', probleme)
     setSelectedProbleme(probleme)
   }
@@ -128,6 +129,17 @@ function Dashboard() {
       .trim()
       .toUpperCase()
       .replace(/\s+/g, '_')
+
+  const parsePositionString = (raw) => {
+    if (!raw || typeof raw !== 'string') return { lat: null, lng: null }
+    const [latRaw, lngRaw] = raw.split(',')
+    const lat = latRaw ? parseFloat(latRaw.trim()) : null
+    const lng = lngRaw ? parseFloat(lngRaw.trim()) : null
+    return {
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null
+    }
+  }
 
   const statusStats = useMemo(() => {
     const base = statusOptions.length
@@ -176,6 +188,88 @@ function Dashboard() {
   }
 
   const maxTrend = Math.max(...trendData.counts, 1)
+
+  const mapMarkers = useMemo(() => {
+    const markers = []
+
+    filteredProblemes
+      .filter(prob => Number.isFinite(parseFloat(prob.latitude)) && Number.isFinite(parseFloat(prob.longitude)))
+      .forEach((prob) => {
+        markers.push({
+          position: [parseFloat(prob.latitude), parseFloat(prob.longitude)],
+          data: prob,
+          tooltip: `
+            <div style="text-align: center;">
+              <strong>${prob.status}</strong><br/>
+              <div style="font-size: 2em;"> ${prob.surface_m2 ?? '-'} m²</div>
+              ${prob.date_signalement ? `<small>${new Date(prob.date_signalement).toLocaleDateString('fr-FR')}</small>` : ''}
+            </div>
+          `,
+          tooltipPermanent: true,
+          popup: `
+            <div style="min-width: 220px;">
+              <strong style="color: #9f7aea; font-size: 1.1em;"> Problème Routier</strong><br/>
+              <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);"/>
+              <strong>Status:</strong> <span style="color: ${prob.status === 'NOUVEAU' ? '#f87171' : prob.status === 'EN_COURS' ? '#fb923c' : '#4ade80'};">${prob.status}</span><br/>
+              ${prob.surface_m2 ? `<strong>Surface:</strong> ${prob.surface_m2} m²<br/>` : ''}
+              ${prob.budget ? `<strong>Budget:</strong> ${new Intl.NumberFormat('fr-FR', {style: 'currency', currency: 'MGA', minimumFractionDigits: 0}).format(prob.budget)}<br/>` : ''}
+              ${prob.signale_par_email ? `<strong>Signalé par:</strong> <small>${prob.signale_par_email}</small><br/>` : ''}
+              ${prob.date_signalement ? `<strong>Date:</strong> ${new Date(prob.date_signalement).toLocaleDateString('fr-FR')}<br/>` : ''}
+              ${prob.commentaire ? `<strong>Commentaire:</strong> ${prob.commentaire}<br/>` : ''}
+              <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);"/>
+              <small style="color: #94a3b8;">Cliquez pour modifier</small>
+            </div>
+          `
+        })
+      })
+
+    const assignedSignalements = new Set(
+      filteredProblemes
+        .map((item) => item?.Id_signalement)
+        .filter(Boolean)
+    )
+
+    allSignalements.forEach((signalement) => {
+      if (!signalement?.position_) return
+      if (assignedSignalements.has(signalement.Id_signalement)) return
+      if (Array.isArray(signalement?.problemes) && signalement.problemes.length) return
+
+      const { lat, lng } = parsePositionString(signalement.position_)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+
+      const label = signalement?.status?.libelle ?? 'Nouveau'
+      const normalized = normalizeLabel(label) || 'NOUVEAU'
+
+      markers.push({
+        position: [lat, lng],
+        data: {
+          status: normalized,
+          type: 'signalement',
+          Id_signalement: signalement.Id_signalement
+        },
+        tooltip: `
+          <div style="text-align: center;">
+            <strong>${label}</strong><br/>
+            <div style="font-size: 1.6em;">Signalement #${signalement.Id_signalement}</div>
+            ${signalement.create_at ? `<small>${new Date(signalement.create_at).toLocaleDateString('fr-FR')}</small>` : ''}
+          </div>
+        `,
+        tooltipPermanent: true,
+        popup: `
+          <div style="min-width: 220px;">
+            <strong style="color: #38bdf8; font-size: 1.1em;"> Signalement non traité</strong><br/>
+            <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);"/>
+            <strong>Status:</strong> <span>${label}</span><br/>
+            ${signalement.utilisateur?.email ? `<strong>Signalé par:</strong> <small>${signalement.utilisateur.email}</small><br/>` : ''}
+            ${signalement.commentaire ? `<strong>Commentaire:</strong> ${signalement.commentaire}<br/>` : ''}
+            ${signalement.create_at ? `<strong>Date:</strong> ${new Date(signalement.create_at).toLocaleDateString('fr-FR')}<br/>` : ''}
+          </div>
+        `
+      })
+    })
+
+    return markers
+  }, [filteredProblemes, allSignalements])
 
   return (
     <div className="dashboard-shell">
@@ -377,34 +471,7 @@ function Dashboard() {
             zoom={13}
             height="520px"
             onMarkerClick={handleMarkerClick}
-            markers={filteredProblemes
-              .filter(prob => Number.isFinite(parseFloat(prob.latitude)) && Number.isFinite(parseFloat(prob.longitude)))
-              .map(prob => ({
-              position: [parseFloat(prob.latitude), parseFloat(prob.longitude)],
-              data: prob,
-              tooltip: `
-                <div style="text-align: center;">
-                  <strong>${prob.status}</strong><br/>
-                  <div style="font-size: 2em;"> ${prob.surface_m2 ?? '-'} m²</div>
-                  ${prob.date_signalement ? `<small>${new Date(prob.date_signalement).toLocaleDateString('fr-FR')}</small>` : ''}
-                </div>
-              `,
-              tooltipPermanent: true,
-              popup: `
-                <div style="min-width: 220px;">
-                  <strong style="color: #9f7aea; font-size: 1.1em;"> Problème Routier</strong><br/>
-                  <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);"/>
-                  <strong>Status:</strong> <span style="color: ${prob.status === 'NOUVEAU' ? '#f87171' : prob.status === 'EN_COURS' ? '#fb923c' : '#4ade80'};">${prob.status}</span><br/>
-                  ${prob.surface_m2 ? `<strong>Surface:</strong> ${prob.surface_m2} m²<br/>` : ''}
-                  ${prob.budget ? `<strong>Budget:</strong> ${new Intl.NumberFormat('fr-FR', {style: 'currency', currency: 'MGA', minimumFractionDigits: 0}).format(prob.budget)}<br/>` : ''}
-                  ${prob.signale_par_email ? `<strong>Signalé par:</strong> <small>${prob.signale_par_email}</small><br/>` : ''}
-                  ${prob.date_signalement ? `<strong>Date:</strong> ${new Date(prob.date_signalement).toLocaleDateString('fr-FR')}<br/>` : ''}
-                  ${prob.commentaire ? `<strong>Commentaire:</strong> ${prob.commentaire}<br/>` : ''}
-                  <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);"/>
-                  <small style="color: #94a3b8;">Cliquez pour modifier</small>
-                </div>
-              `
-            }))}
+            markers={mapMarkers}
           />
         </section>
       </main>
