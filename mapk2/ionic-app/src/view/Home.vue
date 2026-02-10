@@ -91,9 +91,25 @@
                 Ajouter des photos
               </ion-button>
 
+              <ion-text v-if="!cloudinaryConfigured" class="feedback" color="warning">
+                Cloudinary non configuré. Renseigne
+                <strong>VITE_CLOUDINARY_CLOUD_NAME</strong> et
+                <strong>VITE_CLOUDINARY_UPLOAD_PRESET</strong> dans `.env`.
+              </ion-text>
+
               <div v-if="showPhotoOptions" class="photo-options">
-                <ion-button expand="block" class="neon-button" @click="pickFromGallery">Depuis la galerie</ion-button>
-                <ion-button expand="block" class="neon-button" @click="takePhoto">Prendre une photo</ion-button>
+                <ion-button
+                  expand="block"
+                  class="neon-button"
+                  :disabled="!cloudinaryConfigured"
+                  @click="pickFromGallery"
+                >Depuis la galerie</ion-button>
+                <ion-button
+                  expand="block"
+                  class="neon-button"
+                  :disabled="!cloudinaryConfigured"
+                  @click="takePhoto"
+                >Prendre une photo</ion-button>
                 <ion-button expand="block" class="neon-button secondary" @click="showPhotoOptions = false">Annuler</ion-button>
               </div>
 
@@ -410,6 +426,7 @@ const submitSignalement = async () => {
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string
 const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`
+const cloudinaryConfigured = Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET)
 
 const uploadToCloudinary = (file: File, onProgress?: (progress: number) => void) =>
   new Promise<string>((resolve, reject) => {
