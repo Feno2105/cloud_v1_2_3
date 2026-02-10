@@ -162,10 +162,11 @@ function Dashboard() {
   const handleSyncFirebase = async () => {
     setSyncStatus({ loading: true, message: 'Synchronisation en cours...' })
     try {
-      await import('../services/firebaseSync').then(module => module.syncService.syncAll())
-      // Recharger les problèmes depuis l'API après la sync
-      await loadProblemes()
-      setSyncStatus({ loading: false, message: '✅ Synchronisation réussie !' })
+      const result = await import('../services/firebaseSync').then(module => module.syncService.syncAll())
+      // Recharger les problèmes et signalements depuis l'API après la sync
+      await Promise.all([loadProblemes(), loadSignalements()])
+      const count = result?.fbSignalements ?? 0
+      setSyncStatus({ loading: false, message: `✅ Synchronisation réussie ! (${count} signalements Firebase)` })
     } catch (err) {
       console.error('❌ Erreur de synchronisation :', err)
       setSyncStatus({ loading: false, message: '❌ Erreur de synchronisation' })

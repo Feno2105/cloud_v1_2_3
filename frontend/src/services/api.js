@@ -194,6 +194,16 @@
       }
     },
 
+    createUser: async (userData) => {
+      try {
+        const response = await api.post('/utilisateurs', userData)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la création de l\'utilisateur:', error)
+        throw error
+      }
+    },
+
     updateUser: async (id, userData) => {
       try {
         const response = await api.put(`/utilisateurs/${id}`, userData);

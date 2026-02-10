@@ -67,6 +67,11 @@ const nowIso = () => new Date().toISOString()
 const getProblemeId = (p) => toStringId(p.Id_probleme ?? p.id_probleme ?? p.id)
 const getSignalementId = (s) => toStringId(s.Id_signalement ?? s.id_signalement ?? s.id)
 const getUserId = (u) => toStringId(u.Id_utilisateur ?? u.id ?? u.user_id ?? u.id_user)
+const toNumberId = (value) => {
+  if (value === undefined || value === null || value === '') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
 
 const normalizePhotoList = (value) => {
   if (!value) return []
@@ -147,6 +152,16 @@ export const syncService = {
       ])
       const fbUsersMap = new Map(fbUsers.map(u => [getUserId(u), u]))
       const apiUsersMap = new Map(apiUsers.map(u => [getUserId(u), u]))
+      const apiUsersByFireId = new Map(
+        apiUsers
+          .filter(u => u?.fire_user_id)
+          .map(u => [String(u.fire_user_id), u])
+      )
+      const apiUsersByEmail = new Map(
+        apiUsers
+          .filter(u => u?.email)
+          .map(u => [String(u.email).toLowerCase(), u])
+      )
       const rolesMap = new Map(roles.map(role => [toStringId(role.Id_role ?? role.id), role]))
 
       for (const u of apiUsers) {
@@ -178,7 +193,11 @@ export const syncService = {
           if (fbDeleted) continue
           console.log('➕ Sync user vers API:', id)
           const payload = stripFields(fu, ['id', 'Id_utilisateur'])
-          const created = await userService.updateUser(id, payload)
+          if (!payload?.mdp || !payload?.Id_role) {
+            console.warn('⚠️ Données utilisateur incomplètes, création ignorée:', id)
+            continue
+          }
+          const created = await userService.createUser(payload)
           const localId = created?.Id_utilisateur ?? created?.id_utilisateur
           if (localId && toStringId(localId) !== toStringId(id)) {
             await firebaseService.migrateUserId(
@@ -195,7 +214,29 @@ export const syncService = {
           }
           console.log('🔁 Mise à jour user vers API:', id)
           const payload = stripFields(fu, ['id', 'Id_utilisateur'])
-          await userService.updateUser(id, payload)
+          try {
+            await userService.updateUser(id, payload)
+          } catch (updateError) {
+            const status = updateError?.response?.status
+            if (status === 404) {
+              console.warn('⚠️ User introuvable côté API, création à la place:', id)
+              if (!payload?.mdp || !payload?.Id_role) {
+                console.warn('⚠️ Données utilisateur incomplètes, création ignorée:', id)
+                continue
+              }
+              const created = await userService.createUser(payload)
+              const localId = created?.Id_utilisateur ?? created?.id_utilisateur
+              if (localId && toStringId(localId) !== toStringId(id)) {
+                await firebaseService.migrateUserId(
+                  fu.__docId ?? id,
+                  toStringId(localId),
+                  { ...fu, Id_utilisateur: toStringId(localId), update_at: nowIso() }
+                )
+              }
+            } else {
+              throw updateError
+            }
+          }
         }
       }
 
@@ -204,8 +245,30 @@ export const syncService = {
         signalementService.getAll(),
         firebaseService.getSignalements()
       ])
+      console.log('📥 Signalements Firebase:', fbSignalements.length)
       const apiSignalementsMap = new Map(apiSignalements.map(s => [getSignalementId(s), s]))
       const fbSignalementsMap = new Map(fbSignalements.map(s => [getSignalementId(s), s]))
+
+      const resolveUtilisateurId = (signalement) => {
+        const direct = getUserId(signalement)
+        if (direct && apiUsersMap.has(direct)) return direct
+        const fireId = signalement?.fire_user_id || signalement?.utilisateur?.fire_user_id
+        if (fireId && apiUsersByFireId.has(String(fireId))) {
+          return getUserId(apiUsersByFireId.get(String(fireId)))
+        }
+        const email = signalement?.email || signalement?.utilisateur?.email
+        if (email && apiUsersByEmail.has(String(email).toLowerCase())) {
+          return getUserId(apiUsersByEmail.get(String(email).toLowerCase()))
+        }
+        return null
+      }
+
+      const resolveStatusId = (signalement) =>
+        signalement?.Id_status ??
+        signalement?.id_status ??
+        signalement?.status?.Id_status ??
+        signalement?.status?.id ??
+        1
 
       for (const s of apiSignalements) {
         const id = getSignalementId(s)
@@ -230,8 +293,26 @@ export const syncService = {
         if (!local) {
           if (fbDeleted) continue
           console.log('➕ Sync signalement vers API:', id)
-          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement'])
-          const created = await signalementService.create(payload)
+          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement', 'status', 'utilisateur'])
+          const resolvedUserId = resolveUtilisateurId(fs)
+          if (!resolvedUserId) {
+            console.warn('⚠️ Utilisateur introuvable pour le signalement, création ignorée:', id)
+            continue
+          }
+          payload.Id_utilisateur = toNumberId(resolvedUserId)
+          payload.Id_status = toNumberId(resolveStatusId(fs)) ?? 1
+          if (!payload.Id_utilisateur || !payload.Id_status) {
+            console.warn('⚠️ Signalement ignoré (Id requis manquant):', id, payload)
+            continue
+          }
+          let created
+          try {
+            created = await signalementService.create(payload)
+          } catch (error) {
+            console.error('❌ Erreur lors de la création du signalement (payload):', payload)
+            console.error('❌ Détails:', error?.response?.data || error)
+            throw error
+          }
           const localId = created?.Id_signalement ?? created?.id_signalement
           if (localId && toStringId(localId) !== toStringId(id)) {
             await firebaseService.migrateSignalementId(
@@ -251,8 +332,17 @@ export const syncService = {
             continue
           }
           console.log('🔁 Mise à jour signalement vers API:', id)
-          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement'])
-          await signalementService.update(id, payload)
+          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement', 'status', 'utilisateur'])
+          const resolvedUserId = resolveUtilisateurId(fs)
+          if (resolvedUserId) payload.Id_utilisateur = toNumberId(resolvedUserId)
+          if (!payload.Id_status) payload.Id_status = toNumberId(resolveStatusId(fs)) ?? 1
+          try {
+            await signalementService.update(id, payload)
+          } catch (error) {
+            console.error('❌ Erreur lors de la mise à jour du signalement (payload):', payload)
+            console.error('❌ Détails:', error?.response?.data || error)
+            throw error
+          }
           const photos = normalizePhotoList(fs.photos ?? fs.photo ?? fs.images ?? fs.image ?? fs.urls ?? fs.url)
           if (photos.length) {
             await signalementService.syncPhotos(id, photos)
@@ -261,8 +351,14 @@ export const syncService = {
       }
 
       console.log('✅ Synchronisation terminée !');
+      return {
+        fbSignalements: fbSignalements.length,
+        apiSignalements: apiSignalements.length,
+        syncedAt: nowIso()
+      }
     } catch (error) {
       console.error('❌ Erreur synchronisation Firebase:', error);
+      throw error
     }
   }
 };
