@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\UtilisateurController;
 use App\Http\Controllers\Api\SignalementController;
 use App\Http\Controllers\Api\ProblemeController;
 use App\Http\Controllers\Api\HistoriqueAvancementController;
+use App\Http\Controllers\Api\PhotoController;
 
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
@@ -22,4 +23,5 @@ Route::apiResource('signalements', SignalementController::class);
 Route::get('signalements-unassigned', [SignalementController::class, 'unassigned']);
 Route::apiResource('problemes', ProblemeController::class);
 Route::apiResource('historique-avancements', HistoriqueAvancementController::class);
+Route::apiResource('photos', PhotoController::class);
 

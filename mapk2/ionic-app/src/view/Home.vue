@@ -87,6 +87,25 @@
 
             <ion-button
               expand="block"
+              class="neon-button secondary"
+              :disabled="loading"
+              @click="openPhotoActions"
+            >
+              Ajouter photo
+            </ion-button>
+
+            <div v-if="selectedPhotos.length" class="photo-grid">
+              <div v-for="(photo, index) in selectedPhotos" :key="photo + index" class="photo-item">
+                <img :src="photo" alt="Photo sélectionnée" />
+              </div>
+            </div>
+
+            <p v-if="selectedPhotos.length" class="muted">
+              {{ selectedPhotos.length }} photo(s) sélectionnée(s)
+            </p>
+
+            <ion-button
+              expand="block"
               class="neon-button"
               :disabled="loading || !position"
               @click="submitSignalement"
@@ -131,53 +150,6 @@
             </ion-card>
           </div>
         </section>
-
-        <section v-show="activeSection === 'notifications'" id="section-notifications" class="section-block info-section">
-          <div class="info-wrapper">
-            <ion-card class="neon-card info-card">
-              <ion-card-header>
-                <ion-card-title>Notifications</ion-card-title>
-                <ion-card-subtitle>Historique des alertes reçues</ion-card-subtitle>
-              </ion-card-header>
-              <ion-card-content>
-                <div class="button-stack">
-                  <ion-button expand="block" class="neon-button secondary" @click="handleMarkAllRead">
-                    Tout marquer comme lu
-                  </ion-button>
-                  <ion-button expand="block" class="neon-button danger" @click="handleClearNotifications">
-                    Vider les notifications
-                  </ion-button>
-                </div>
-
-                <div v-if="!notifications.length" class="empty-state">
-                  <p>Aucune notification.</p>
-                  <p class="muted">Les notifications reçues apparaîtront ici.</p>
-                </div>
-                <ion-list v-else class="neon-list info-list">
-                  <ion-item
-                    v-for="item in notifications"
-                    :key="item.id"
-                    class="neon-item info-item"
-                    lines="none"
-                  >
-                    <ion-label class="info-label">
-                      <div class="info-row">
-                        <h3>
-                          {{ item.title }}
-                          <span v-if="!item.read" class="info-badge">Nouveau</span>
-                        </h3>
-                        <span class="info-date">{{ formatDate(item.receivedAt) }}</span>
-                      </div>
-                      <div class="info-detail">
-                        <span class="info-detail-value">{{ item.body || '—' }}</span>
-                      </div>
-                    </ion-label>
-                  </ion-item>
-                </ion-list>
-              </ion-card-content>
-            </ion-card>
-          </div>
-        </section>
       </div>
     </ion-content>
 
@@ -187,26 +159,29 @@
           <ion-button class="bottom-button" :class="{ active: activeSection === 'map' }" @click="setSection('map')">Carte</ion-button>
           <ion-button class="bottom-button" :class="{ active: activeSection === 'signal' }" @click="setSection('signal')">Signaler</ion-button>
           <ion-button class="bottom-button" :class="{ active: activeSection === 'info' }" @click="setSection('info')">Information</ion-button>
-          <ion-button class="bottom-button" :class="{ active: activeSection === 'notifications' }" @click="setSection('notifications')">
-            Notifications
-            <span v-if="unreadCount" class="nav-badge">{{ unreadCount }}</span>
-          </ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-footer>
+
+    <ion-action-sheet
+      :is-open="showPhotoActions"
+      header="Ajouter une photo"
+      :buttons="photoActionButtons"
+      @didDismiss="showPhotoActions = false"
+    />
   </ion-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { addDoc, collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { fetchUserProfile, getCachedProfile, getCurrentUser, logoutMobile } from '../services/mobileAuth'
-import { clearNotifications, getNotifications, markAllRead } from '../services/notificationStore'
 import L from 'leaflet'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import {
   IonPage,
   IonHeader,
@@ -225,7 +200,8 @@ import {
   IonTextarea,
   IonText,
   IonList,
-  IonLabel
+  IonLabel,
+  IonActionSheet
 } from '@ionic/vue'
 
 const router = useRouter()
@@ -238,42 +214,114 @@ const mySignalements = ref<any[]>([])
 const allSignalements = ref<any[]>([])
 const mapFilterMode = ref<'all' | 'mine'>('all')
 const contentRef = ref<any>(null)
-const activeSection = ref<'map' | 'signal' | 'info' | 'notifications'>('map')
+const activeSection = ref<'map' | 'signal' | 'info'>('map')
 const showMapHint = ref(true)
 const mapContainer = ref<HTMLDivElement | null>(null)
 const pendingPosition = ref<{ lat: number; lng: number } | null>(null)
 const isPicking = ref(true)
+const showPhotoActions = ref(false)
+const selectedPhotos = ref<string[]>([])
+const maxPhotoSizeBytes = 900000
+const maxPhotoWidth = 1280
+const photoQuality = 0.7
 let map: any | null = null
 let markersLayer: any | null = null
 const tileServerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
-type NotificationItem = {
-  id: string
-  title: string
-  body: string
-  receivedAt: string
-  read: boolean
+const photoActionButtons = [
+  {
+    text: 'Prendre une photo',
+    handler: () => handlePickFromCamera()
+  },
+  {
+    text: 'Choisir depuis la galerie',
+    handler: () => handlePickFromGallery()
+  },
+  {
+    text: 'Annuler',
+    role: 'cancel'
+  }
+]
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Lecture image impossible.'))
+    reader.readAsDataURL(blob)
+  })
+
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Chargement image impossible.'))
+    img.src = src
+  })
+
+const compressDataUrl = async (dataUrl: string) => {
+  const img = await loadImage(dataUrl)
+  const scale = Math.min(maxPhotoWidth / img.width, maxPhotoWidth / img.height, 1)
+  const width = Math.round(img.width * scale)
+  const height = Math.round(img.height * scale)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas indisponible.')
+  ctx.drawImage(img, 0, 0, width, height)
+
+  return canvas.toDataURL('image/jpeg', photoQuality)
 }
 
-const notifications = ref<NotificationItem[]>([])
-const unreadCount = computed(() => notifications.value.filter((item) => !item.read).length)
-
-const refreshNotifications = () => {
-  notifications.value = getNotifications()
+const dataUrlToBase64 = (dataUrl: string) => {
+  const [meta, base64] = dataUrl.split(',')
+  const match = meta?.match(/data:(.*?);base64/)
+  const mime = match?.[1] || 'image/jpeg'
+  return { base64, mime }
 }
 
-const handleMarkAllRead = () => {
-  markAllRead()
-  refreshNotifications()
+const estimateBase64Bytes = (base64: string) => {
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
 }
 
-const handleClearNotifications = () => {
-  clearNotifications()
-  refreshNotifications()
+const toBase64Payload = async (webPath: string) => {
+  const response = await fetch(webPath)
+  const blob = await response.blob()
+  const dataUrl = await blobToDataUrl(blob)
+  const compressed = await compressDataUrl(dataUrl)
+  const { base64, mime } = dataUrlToBase64(compressed)
+
+  if (estimateBase64Bytes(base64) > maxPhotoSizeBytes) {
+    throw new Error('Photo trop lourde après compression.')
+  }
+
+  return { base64, mime }
 }
 
-const handleNotificationsUpdated = () => {
-  refreshNotifications()
+const uploadPhotosForSignalement = async (signalementId: string) => {
+  if (!selectedPhotos.value.length) return
+
+  const now = new Date().toISOString()
+  await Promise.all(
+    selectedPhotos.value.map(async (webPath, index) => {
+      const { base64, mime } = await toBase64Payload(webPath)
+      const photoRef = doc(collection(db, 'photo'))
+      await setDoc(photoRef, {
+        Id_photo: photoRef.id,
+        Id_signalement: signalementId,
+        image_base64: base64,
+        mime_type: mime,
+        nom_fichier: `signalement_${signalementId}_${index + 1}.jpg`,
+        is_deleted: false,
+        create_at: now,
+        update_at: now
+      })
+    })
+  )
 }
 
 const normalizeUserIdValue = (raw: unknown) => {
@@ -396,8 +444,10 @@ const submitSignalement = async () => {
 
     const ref = doc(collection(db, 'signalement'))
     await setDoc(ref, { ...payload, Id_signalement: ref.id })
+    await uploadPhotosForSignalement(ref.id)
 
     commentaire.value = ''
+    selectedPhotos.value = []
     message.value = 'Signalement envoyé ✅'
     messageType.value = 'success'
     await loadMySignalements()
@@ -407,6 +457,91 @@ const submitSignalement = async () => {
     messageType.value = 'danger'
   } finally {
     loading.value = false
+  }
+}
+
+const openPhotoActions = async () => {
+  if (Capacitor.isNativePlatform()) {
+    await Camera.requestPermissions({ permissions: ['camera', 'photos'] })
+  }
+  showPhotoActions.value = true
+}
+
+const ensureCameraPermissions = async () => {
+  const status = await Camera.checkPermissions()
+  if (status.camera === 'granted') return true
+  const reqStatus = await Camera.requestPermissions({ permissions: ['camera'] })
+  return reqStatus.camera === 'granted'
+}
+
+const ensureGalleryPermissions = async () => {
+  const status = await Camera.checkPermissions()
+  if (status.photos === 'granted' || status.photos === 'limited') return true
+  const reqStatus = await Camera.requestPermissions({ permissions: ['photos'] })
+  return reqStatus.photos === 'granted' || reqStatus.photos === 'limited'
+}
+
+const handlePickFromCamera = async () => {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const allowed = await ensureCameraPermissions()
+      if (!allowed) {
+        message.value = 'Autorisation caméra requise.'
+        messageType.value = 'danger'
+        return
+      }
+
+      const photo = await Camera.getPhoto({
+        source: CameraSource.Camera,
+        resultType: CameraResultType.Uri,
+        quality: 80
+      })
+
+      if (photo?.webPath) {
+        selectedPhotos.value = [...selectedPhotos.value, photo.webPath]
+      }
+      return
+    }
+
+    const photo = await Camera.getPhoto({
+      source: CameraSource.Prompt,
+      resultType: CameraResultType.Uri,
+      quality: 80
+    })
+
+    if (photo?.webPath) {
+      selectedPhotos.value = [...selectedPhotos.value, photo.webPath]
+    }
+  } catch {
+    message.value = 'Impossible d\'ouvrir la caméra.'
+    messageType.value = 'danger'
+  }
+}
+
+const handlePickFromGallery = async () => {
+  try {
+    const allowed = await ensureGalleryPermissions()
+    if (!allowed) {
+      message.value = 'Autorisation galerie requise.'
+      messageType.value = 'danger'
+      return
+    }
+
+    const result = await Camera.pickImages({
+      quality: 80,
+      limit: 10
+    })
+
+    const newPhotos = result?.photos
+      ?.map((item: { webPath: any }) => item.webPath)
+      .filter((path: any): path is string => !!path)
+
+    if (newPhotos?.length) {
+      selectedPhotos.value = [...selectedPhotos.value, ...newPhotos]
+    }
+  } catch {
+    message.value = 'Impossible d\'ouvrir la galerie.'
+    messageType.value = 'danger'
   }
 }
 
@@ -578,7 +713,6 @@ const updateMarkers = () => {
 }
 
 const onMountedHandler = async () => {
-  refreshNotifications()
   await handleOfflineRedirect()
   if (!navigator.onLine) return
   initMap()
@@ -586,15 +720,9 @@ const onMountedHandler = async () => {
   await loadAllSignalements()
   await openMapPicker()
   window.addEventListener('offline', handleOfflineRedirect)
-  window.addEventListener('notifications-updated', handleNotificationsUpdated)
 }
 
 onMounted(onMountedHandler)
-
-onBeforeUnmount(() => {
-  window.removeEventListener('offline', handleOfflineRedirect)
-  window.removeEventListener('notifications-updated', handleNotificationsUpdated)
-})
 </script>
 
 <style scoped>
@@ -660,14 +788,31 @@ onBeforeUnmount(() => {
   --color: #e2e8f0;
 }
 
-.neon-button.danger {
-  --background: linear-gradient(120deg, #f87171, #fb7185);
-  --color: #0b1120;
-}
-
 .button-stack {
   display: grid;
   gap: 0.75rem;
+}
+
+.photo-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 0.75rem;
+}
+
+.photo-item {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.photo-item img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  aspect-ratio: 1 / 1;
 }
 
 .neon-item {
@@ -679,26 +824,6 @@ onBeforeUnmount(() => {
 
 .neon-list {
   background: transparent;
-}
-
-.nav-badge {
-  margin-left: 0.4rem;
-  padding: 0.1rem 0.45rem;
-  font-size: 0.7rem;
-  border-radius: 999px;
-  background: #f97316;
-  color: #0b1120;
-  font-weight: 700;
-}
-
-.info-badge {
-  margin-left: 0.5rem;
-  font-size: 0.7rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-  background: #38bdf8;
-  color: #0b1120;
-  font-weight: 700;
 }
 
 .info-section {

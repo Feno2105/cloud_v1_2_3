@@ -27,7 +27,7 @@ class SignalementController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(
-            Signalement::with(['status', 'utilisateur', 'problemes'])->get()
+            Signalement::with(['status', 'utilisateur', 'problemes', 'photos'])->get()
         );
     }
 
@@ -88,7 +88,9 @@ class SignalementController extends Controller
     #[OA\Response(response: 200, description: "Signalement trouvé")]
     public function show(int $id): JsonResponse
     {
-        return response()->json(Signalement::findOrFail($id));
+        return response()->json(
+            Signalement::with(['status', 'utilisateur', 'problemes', 'photos'])->findOrFail($id)
+        );
     }
 
     #[OA\Put(
