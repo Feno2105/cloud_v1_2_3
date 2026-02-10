@@ -17,6 +17,7 @@ Route::apiResource('roles', RoleController::class);
 Route::apiResource('entreprises', EntrepriseController::class);
 Route::apiResource('statuses', StatusController::class);
 Route::apiResource('utilisateurs', UtilisateurController::class);
+Route::post('utilisateurs/fcm-token', [UtilisateurController::class, 'updateFcmToken']);
 Route::apiResource('signalements', SignalementController::class);
 Route::get('signalements-unassigned', [SignalementController::class, 'unassigned']);
 Route::apiResource('problemes', ProblemeController::class);

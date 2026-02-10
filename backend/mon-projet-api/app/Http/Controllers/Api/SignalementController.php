@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\HistoriqueAvancement;
 use App\Models\Signalement;
+use App\Models\Status;
+use App\Services\FirebaseNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(
@@ -106,8 +110,43 @@ class SignalementController extends Controller
             'Id_utilisateur' => 'sometimes|integer|exists:utilisateur,Id_utilisateur'
         ]);
 
-        $signalement->update($request->all());
-        return response()->json($signalement);
+        try {
+            $result = DB::transaction(function () use ($request, $signalement) {
+                if ($request->has('Id_status') && (int) $request->Id_status !== (int) $signalement->Id_status) {
+                    $signalement->load('utilisateur');
+                    if (!$signalement->utilisateur || !$signalement->utilisateur->fcm_token) {
+                        throw new \RuntimeException('veuillez sync pour avoir token');
+                    }
+
+                    $status = Status::find($request->Id_status);
+                    if ($status) {
+                        $notificationService = new FirebaseNotificationService();
+                        $sent = $notificationService->notifySignalementStatusChange(
+                            $signalement->Id_signalement,
+                            $status->libelle
+                        );
+
+                        if (!$sent) {
+                            throw new \RuntimeException('echec envoi notification');
+                        }
+
+                        HistoriqueAvancement::create([
+                            'nouveau_status' => $status->libelle,
+                            'Id_signalement' => $signalement->Id_signalement
+                        ]);
+                    }
+                }
+
+                $signalement->update($request->all());
+                return $signalement;
+            });
+
+            return response()->json($result);
+        } catch (\RuntimeException $e) {
+            $message = $e->getMessage();
+            $status = $message === 'veuillez sync pour avoir token' ? 422 : 500;
+            return response()->json(['message' => $message], $status);
+        }
     }
 
     #[OA\Delete(
