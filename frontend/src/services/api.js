@@ -286,6 +286,38 @@
       }
     }
   }
+
+  export const photoService = {
+    getAll: async () => {
+      try {
+        const response = await api.get('/photos')
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la récupération des photos:', error)
+        throw error
+      }
+    },
+
+    create: async (photoData) => {
+      try {
+        const response = await api.post('/photos', photoData)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la création de la photo:', error)
+        throw error
+      }
+    },
+
+    update: async (id, photoData) => {
+      try {
+        const response = await api.put(`/photos/${id}`, photoData)
+        return response.data
+      } catch (error) {
+        console.error('❌ Erreur lors de la mise à jour de la photo:', error)
+        throw error
+      }
+    }
+  }
   export const problemeService = {
     getAll: async () => {
       try {
