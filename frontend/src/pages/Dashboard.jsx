@@ -6,6 +6,8 @@ import UserList from '../components/UserList'
 import ProblemeModal from '../components/ProblemeModal'
 import SignalementAssignModal from '../components/SignalementAssignModal'
 import HistoriqueAvancementModal from '../components/HistoriqueAvancementModal'
+import PhotoGalleryModal from '../components/PhotoGalleryModal'
+import PrixModal from '../components/PrixModal'
 import Map from '../components/Map'
 import './Dashboard.css'
 
@@ -14,6 +16,7 @@ function Dashboard() {
   const [showUserForm, setShowUserForm] = useState(false)
   const [showUserList, setShowUserList] = useState(false)
   const [showHistorique, setShowHistorique] = useState(false)
+  const [showPrix, setShowPrix] = useState(false)
   const [problemes, setProblemes] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusOptions, setStatusOptions] = useState([])
@@ -28,6 +31,7 @@ function Dashboard() {
   const [signalements, setSignalements] = useState([])
   const [allSignalements, setAllSignalements] = useState([])
   const [loadingSignalements, setLoadingSignalements] = useState(false)
+  const [photoModalState, setPhotoModalState] = useState({ open: false, photos: [] })
 
   useEffect(() => {
     loadProblemes()
@@ -141,6 +145,47 @@ function Dashboard() {
     }
   }
 
+  const getPhotoSrc = (photo) => {
+    if (!photo) return ''
+    const raw = photo.image_base64 ?? photo.base64 ?? photo.image
+    if (!raw) return ''
+    const cleaned = String(raw).replace(/\s+/g, '')
+    if (!cleaned) return ''
+    if (cleaned.startsWith('data:')) return cleaned
+    const mime = photo.mime_type || 'image/jpeg'
+    return `data:${mime};base64,${cleaned}`
+  }
+
+  const buildPhotoPreview = (photos = []) => {
+    if (!Array.isArray(photos) || !photos.length) return ''
+    const items = photos
+      .map((photo) => getPhotoSrc(photo))
+      .filter(Boolean)
+      .slice(0, 2)
+    if (!items.length) return ''
+    const thumbs = items
+      .map((src) => `<img src="${src}" alt="photo" style="width:54px;height:54px;object-fit:cover;border-radius:8px;border:1px solid rgba(148,163,184,0.35);" />`)
+      .join('')
+    return `<div style="display:flex;gap:6px;margin-top:6px;">${thumbs}</div>`
+  }
+
+  const openPhotoModalFromMarker = (data) => {
+    if (!data) return
+    const directPhotos = Array.isArray(data.photos) ? data.photos : []
+    if (directPhotos.length) {
+      setPhotoModalState({ open: true, photos: directPhotos })
+      return
+    }
+
+    const signalementId = data.Id_signalement
+    if (!signalementId) return
+    const signalement = allSignalements.find((item) => item.Id_signalement === signalementId)
+    const photos = Array.isArray(signalement?.photos) ? signalement.photos : []
+    if (photos.length) {
+      setPhotoModalState({ open: true, photos })
+    }
+  }
+
   const statusStats = useMemo(() => {
     const base = statusOptions.length
       ? Object.fromEntries(statusOptions.map((status) => [status, 0]))
@@ -216,6 +261,7 @@ function Dashboard() {
               ${prob.signale_par_email ? `<strong>Signalé par:</strong> <small>${prob.signale_par_email}</small><br/>` : ''}
               ${prob.date_signalement ? `<strong>Date:</strong> ${new Date(prob.date_signalement).toLocaleDateString('fr-FR')}<br/>` : ''}
               ${prob.commentaire ? `<strong>Commentaire:</strong> ${prob.commentaire}<br/>` : ''}
+              ${buildPhotoPreview(prob.photos)}
               <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);"/>
               <small style="color: #94a3b8;">Cliquez pour modifier</small>
             </div>
@@ -263,6 +309,7 @@ function Dashboard() {
             ${signalement.utilisateur?.email ? `<strong>Signalé par:</strong> <small>${signalement.utilisateur.email}</small><br/>` : ''}
             ${signalement.commentaire ? `<strong>Commentaire:</strong> ${signalement.commentaire}<br/>` : ''}
             ${signalement.create_at ? `<strong>Date:</strong> ${new Date(signalement.create_at).toLocaleDateString('fr-FR')}<br/>` : ''}
+            ${buildPhotoPreview(signalement.photos)}
           </div>
         `
       })
@@ -283,6 +330,7 @@ function Dashboard() {
           <button className="nav-item" onClick={() => setShowUserList(true)}>Utilisateurs</button>
           <button className="nav-item" onClick={() => setShowUserForm(true)}>Créer un utilisateur</button>
           <button className="nav-item" onClick={() => setShowHistorique(true)}>Historique</button>
+          <button className="nav-item" onClick={() => setShowPrix(true)}>Prix</button>
           <button className="nav-item" onClick={handleLogout}>Déconnexion</button>
         </nav>
         <div className="sidebar-card">
@@ -465,12 +513,14 @@ function Dashboard() {
             <p>
               {loading ? 'Chargement des problèmes...' : `${filteredProblemes.length} problème(s) filtré(s)`}
             </p>
+            <p>Double cliquer sur la position pour voir les photo et cliquer sur l’image pour l’agrandir</p>
           </div>
           <Map 
             center={[-18.8792, 47.5079]}
             zoom={13}
             height="520px"
             onMarkerClick={handleMarkerClick}
+            onMarkerDoubleClick={openPhotoModalFromMarker}
             markers={mapMarkers}
           />
         </section>
@@ -479,12 +529,19 @@ function Dashboard() {
       {showUserForm && <UserForm onClose={() => setShowUserForm(false)} onUserCreated={handleUserCreated} />}
       {showUserList && <UserList onClose={() => setShowUserList(false)} />}
       {showHistorique && <HistoriqueAvancementModal onClose={() => setShowHistorique(false)} />}
+      {showPrix && <PrixModal onClose={() => setShowPrix(false)} />}
       {selectedProbleme && <ProblemeModal probleme={selectedProbleme} onClose={() => setSelectedProbleme(null)} onUpdate={handleProblemeUpdate} />}
       {selectedSignalement && (
         <SignalementAssignModal
           signalement={selectedSignalement}
           onClose={() => setSelectedSignalement(null)}
           onAssigned={handleSignalementAssigned}
+        />
+      )}
+      {photoModalState.open && (
+        <PhotoGalleryModal
+          photos={photoModalState.photos}
+          onClose={() => setPhotoModalState({ open: false, photos: [] })}
         />
       )}
     </div>

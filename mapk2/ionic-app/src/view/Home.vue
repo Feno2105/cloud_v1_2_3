@@ -17,6 +17,7 @@
             <ion-card-title>Carte des signalements</ion-card-title>
           </ion-card-header>
           <ion-card-content>
+            <p class="muted">Double cliquer sur la position pour voir les photo et cliquer sur l’image pour l’agrandir</p>
             <div class="filter-row">
               <ion-button
                 size="small"
@@ -76,6 +77,7 @@
             <ion-card-subtitle>Envoyé immédiatement vers Firebase</ion-card-subtitle>
           </ion-card-header>
           <ion-card-content>
+            <p class="muted">Double cliquer sur la position pour voir les photo et cliquer sur l’image pour l’agrandir</p>
             <ion-item lines="none" class="neon-item">
               <ion-textarea
                 v-model="commentaire"
@@ -169,6 +171,33 @@
       :buttons="photoActionButtons"
       @didDismiss="showPhotoActions = false"
     />
+
+    <div v-if="showPhotoModal" class="photo-modal-overlay" @click="closePhotoModal">
+      <div class="photo-modal" @click.stop>
+        <div class="photo-modal-header">
+          <h3>Photos du signalement</h3>
+          <button class="photo-close" @click="closePhotoModal">&times;</button>
+        </div>
+        <div class="photo-grid">
+          <button
+            v-for="photo in photoModalPhotos"
+            :key="photo.id"
+            type="button"
+            class="photo-thumb"
+            @click="selectPhoto(photo)"
+          >
+            <img :src="buildPhotoSrc(photo)" alt="Photo" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="selectedPhoto" class="photo-lightbox" @click="selectedPhoto = null">
+      <div class="photo-lightbox-inner" @click.stop>
+        <button class="photo-close" @click="selectedPhoto = null">&times;</button>
+        <img :src="selectedPhoto" alt="Photo" />
+      </div>
+    </div>
   </ion-page>
 </template>
 
@@ -179,6 +208,9 @@ import { addDoc, collection, doc, getDocs, query, setDoc, where } from 'firebase
 import { auth, db } from '../firebase'
 import { fetchUserProfile, getCachedProfile, getCurrentUser, logoutMobile } from '../services/mobileAuth'
 import L from 'leaflet'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
@@ -221,12 +253,23 @@ const pendingPosition = ref<{ lat: number; lng: number } | null>(null)
 const isPicking = ref(true)
 const showPhotoActions = ref(false)
 const selectedPhotos = ref<string[]>([])
+const photosBySignalement = ref<Record<string, any[]>>({})
+const showPhotoModal = ref(false)
+const photoModalPhotos = ref<any[]>([])
+const selectedPhoto = ref<string | null>(null)
 const maxPhotoSizeBytes = 900000
 const maxPhotoWidth = 1280
 const photoQuality = 0.7
 let map: any | null = null
 let markersLayer: any | null = null
 const tileServerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow
+})
 
 const photoActionButtons = [
   {
@@ -242,6 +285,35 @@ const photoActionButtons = [
     role: 'cancel'
   }
 ]
+
+const buildPhotoSrc = (photo: Record<string, any>) => {
+  if (!photo) return ''
+  const raw = photo.image_base64 ?? photo.base64 ?? photo.image
+  if (!raw) return ''
+  const cleaned = String(raw).replace(/\s+/g, '')
+  if (!cleaned) return ''
+  if (cleaned.startsWith('data:')) return cleaned
+  const mime = photo.mime_type || 'image/jpeg'
+  return `data:${mime};base64,${cleaned}`
+}
+
+const openPhotoModal = (photos: any[]) => {
+  const items = Array.isArray(photos) ? photos : []
+  if (!items.length) return
+  photoModalPhotos.value = items
+  selectedPhoto.value = null
+  showPhotoModal.value = true
+}
+
+const closePhotoModal = () => {
+  showPhotoModal.value = false
+  photoModalPhotos.value = []
+  selectedPhoto.value = null
+}
+
+const selectPhoto = (photo: Record<string, any>) => {
+  selectedPhoto.value = buildPhotoSrc(photo)
+}
 
 const blobToDataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -436,6 +508,7 @@ const submitSignalement = async () => {
       position_: `${position.value.lat},${position.value.lng}`,
       commentaire: commentaire.value,
       is_deleted: false,
+      niveau: 0,
       Id_status: 1,
       Id_utilisateur: profileUserId,
       create_at: new Date().toISOString(),
@@ -585,6 +658,24 @@ const loadAllSignalements = async () => {
   }
 }
 
+const loadPhotos = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'photo'))
+    const map: Record<string, any[]> = {}
+    snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data()
+      const key = String(data?.Id_signalement ?? data?.id_signalement ?? '').trim()
+      if (!key) return
+      if (!map[key]) map[key] = []
+      map[key].push({ id: docSnap.id, ...data })
+    })
+    photosBySignalement.value = map
+  } catch (err: any) {
+    message.value = err?.message || 'Erreur lors du chargement des photos.'
+    messageType.value = 'danger'
+  }
+}
+
 const formatDate = (raw?: string) => {
   if (!raw) return '—'
   return new Date(raw).toLocaleString('fr-FR')
@@ -648,6 +739,7 @@ const initMap = () => {
     zoomControl: false,
     zoomSnap: 1,
     zoomDelta: 1,
+    doubleClickZoom: false,
     updateWhenIdle: true,
     updateWhenZooming: false
   }).setView([-18.8792, 47.5079], 13)
@@ -694,6 +786,8 @@ const updateMarkers = () => {
     const lat = parseFloat(latRaw)
     const lng = parseFloat(lngRaw)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    const signalementId = String(item.Id_signalement ?? item.id_signalement ?? '')
+    const photos = signalementId ? (photosBySignalement.value[signalementId] || []) : []
     const statusLabel =
       item?.status?.libelle ??
       item?.status?.label ??
@@ -708,7 +802,10 @@ const updateMarkers = () => {
         Créé le: ${createdAt}
       </div>
     `
-    L.marker([lat, lng]).bindPopup(popup).addTo(markersLayer)
+    const marker = L.marker([lat, lng]).bindPopup(popup).addTo(markersLayer)
+    if (photos.length) {
+      marker.on('dblclick', () => openPhotoModal(photos))
+    }
   })
 }
 
@@ -718,7 +815,7 @@ const onMountedHandler = async () => {
   initMap()
   await loadMySignalements()
   await loadAllSignalements()
-  await openMapPicker()
+  await loadPhotos()
   window.addEventListener('offline', handleOfflineRedirect)
 }
 
@@ -934,5 +1031,67 @@ onMounted(onMountedHandler)
 .bottom-button.active {
   --color: #38bdf8;
   font-weight: 700;
+}
+
+.photo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1.5rem;
+}
+
+.photo-modal {
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 16px;
+  padding: 1rem;
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.photo-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.photo-close {
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: 1.6rem;
+  cursor: pointer;
+}
+
+.photo-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 1.5rem;
+}
+
+.photo-lightbox-inner {
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 16px;
+  padding: 1rem;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+.photo-lightbox-inner img {
+  max-width: 100%;
+  max-height: 70vh;
+  display: block;
+  border-radius: 12px;
 }
 </style>

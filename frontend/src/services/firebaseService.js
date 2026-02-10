@@ -130,6 +130,12 @@ export const firebaseService = {
     return id
   },
 
+  deletePhoto: async (id) => {
+    const normalizedId = toStringId(id)
+    if (!normalizedId) return
+    await deleteDoc(doc(db, 'photo', normalizedId))
+  },
+
   migratePhotoId: async (oldId, newId, photo) =>
     migrateDocId('photo', oldId, newId, photo),
 
