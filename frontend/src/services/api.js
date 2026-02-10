@@ -255,6 +255,16 @@
       }
     },
 
+    syncPhotos: async (id, photos = []) => {
+      try {
+        const response = await api.post(`/signalements/${id}/photos/sync`, { photos });
+        return response.data;
+      } catch (error) {
+        console.error('❌ Erreur lors de la synchronisation des photos:', error);
+        throw error;
+      }
+    },
+
     delete: async (id) => {
       try {
         await api.delete(`/signalements/${id}`);

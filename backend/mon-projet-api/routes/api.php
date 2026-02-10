@@ -17,6 +17,7 @@ Route::apiResource('entreprises', EntrepriseController::class);
 Route::apiResource('statuses', StatusController::class);
 Route::apiResource('utilisateurs', UtilisateurController::class);
 Route::apiResource('signalements', SignalementController::class);
+Route::post('signalements/{id}/photos/sync', [SignalementController::class, 'syncPhotos']);
 Route::get('signalements-unassigned', [SignalementController::class, 'unassigned']);
 Route::apiResource('problemes', ProblemeController::class);
 

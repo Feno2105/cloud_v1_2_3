@@ -68,6 +68,14 @@ const getProblemeId = (p) => toStringId(p.Id_probleme ?? p.id_probleme ?? p.id)
 const getSignalementId = (s) => toStringId(s.Id_signalement ?? s.id_signalement ?? s.id)
 const getUserId = (u) => toStringId(u.Id_utilisateur ?? u.id ?? u.user_id ?? u.id_user)
 
+const normalizePhotoList = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (typeof value === 'string') return value.trim() ? [value] : []
+  if (typeof value === 'object') return Object.values(value).filter(Boolean)
+  return []
+}
+
 export const syncService = {
 
   // synchronisation complète
@@ -232,6 +240,10 @@ export const syncService = {
               { ...fs, Id_signalement: toStringId(localId), update_at: nowIso() }
             )
           }
+          const photos = normalizePhotoList(fs.photos ?? fs.photo ?? fs.images ?? fs.image ?? fs.urls ?? fs.url)
+          if (photos.length && localId) {
+            await signalementService.syncPhotos(toStringId(localId), photos)
+          }
         } else if (shouldSync(fs, local, ['create_at', 'update_at', 'created_at', 'updated_at'])) {
           if (fbDeleted) {
             console.log('🗑️ Suppression logique signalement vers API:', id)
@@ -241,6 +253,10 @@ export const syncService = {
           console.log('🔁 Mise à jour signalement vers API:', id)
           const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement'])
           await signalementService.update(id, payload)
+          const photos = normalizePhotoList(fs.photos ?? fs.photo ?? fs.images ?? fs.image ?? fs.urls ?? fs.url)
+          if (photos.length) {
+            await signalementService.syncPhotos(id, photos)
+          }
         }
       }
 

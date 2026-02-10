@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Utilisateur;
+use App\Models\SignalementPhoto;
 
 class Signalement extends Model
 {
@@ -42,5 +43,10 @@ class Signalement extends Model
             'Id_signalement',
             'Id_probleme'
         );
+    }
+
+    public function photos()
+    {
+        return $this->hasMany(SignalementPhoto::class, 'Id_signalement', 'Id_signalement');
     }
 }
