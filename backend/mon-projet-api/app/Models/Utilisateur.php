@@ -21,6 +21,7 @@ class Utilisateur extends Authenticatable implements JWTSubject
         'mdp',
         'id_deleted',
         'fire_user_id',
+        'fcm_token',
         'Id_role'
     ];
 
@@ -36,6 +37,11 @@ class Utilisateur extends Authenticatable implements JWTSubject
     public function role()
     {
         return $this->belongsTo(Role::class, 'Id_role', 'Id_role');
+    }
+
+    public function signalements()
+    {
+        return $this->hasMany(Signalement::class, 'Id_utilisateur', 'Id_utilisateur');
     }
 
     // JWT

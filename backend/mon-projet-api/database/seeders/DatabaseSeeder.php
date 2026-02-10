@@ -116,7 +116,7 @@ class DatabaseSeeder extends Seeder
                 'position_' => '-18.9100,47.5200',
                 'commentaire' => 'Poteau endommagé',
                 'is_deleted' => false,
-                'Id_status' => 2,
+                'Id_status' => 1,
                 'Id_utilisateur' => 2
             ]
         ]);

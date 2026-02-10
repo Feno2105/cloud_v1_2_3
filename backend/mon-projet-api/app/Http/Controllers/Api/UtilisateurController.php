@@ -40,7 +40,8 @@ class UtilisateurController extends Controller
                 new OA\Property(property: "mdp", type: "string", example: "123456"),
                 new OA\Property(property: "Id_role", type: "integer", example: 1),
                 new OA\Property(property: "id_deleted", type: "boolean", example: false),
-                new OA\Property(property: "fire_user_id", type: "string", example: "b7Hk6pV0bVQq..." )
+                new OA\Property(property: "fire_user_id", type: "string", example: "b7Hk6pV0bVQq..." ),
+                new OA\Property(property: "fcm_token", type: "string", example: "fcm_token_example..." )
             ]
         )
     )]
@@ -52,7 +53,8 @@ class UtilisateurController extends Controller
             'mdp' => 'required|min:6',
             'Id_role' => 'required|integer',
             'id_deleted' => 'sometimes|boolean',
-            'fire_user_id' => 'nullable|string|unique:utilisateur,fire_user_id'
+            'fire_user_id' => 'nullable|string|unique:utilisateur,fire_user_id',
+            'fcm_token' => 'nullable|string|max:255'
         ]);
 
         $data = $request->all();
@@ -90,7 +92,8 @@ class UtilisateurController extends Controller
             'mdp' => 'sometimes|min:6',
             'Id_role' => 'sometimes|integer',
             'id_deleted' => 'sometimes|boolean',
-            'fire_user_id' => 'nullable|string|unique:utilisateur,fire_user_id,' . $user->Id_utilisateur . ',Id_utilisateur'
+            'fire_user_id' => 'nullable|string|unique:utilisateur,fire_user_id,' . $user->Id_utilisateur . ',Id_utilisateur',
+            'fcm_token' => 'nullable|string|max:255'
         ]);
 
         $data = $request->all();
@@ -113,5 +116,34 @@ class UtilisateurController extends Controller
     {
         Utilisateur::destroy($id);
         return response()->json(['message' => 'Utilisateur supprimé']);
+    }
+
+    #[OA\Post(
+        path: "/api/utilisateurs/fcm-token",
+        summary: "Mettre a jour le token FCM",
+        tags: ["Utilisateurs"]
+    )]
+    #[OA\RequestBody(
+        required: true,
+        content: new OA\JsonContent(
+            required: ["fire_user_id", "fcm_token"],
+            properties: [
+                new OA\Property(property: "fire_user_id", type: "string", example: "b7Hk6pV0bVQq..." ),
+                new OA\Property(property: "fcm_token", type: "string", example: "fcm_token_example..." )
+            ]
+        )
+    )]
+    #[OA\Response(response: 200, description: "Token FCM mis a jour")]
+    public function updateFcmToken(Request $request): JsonResponse
+    {
+        $request->validate([
+            'fire_user_id' => 'required|string|exists:utilisateur,fire_user_id',
+            'fcm_token' => 'required|string|max:255'
+        ]);
+
+        $user = Utilisateur::where('fire_user_id', $request->fire_user_id)->firstOrFail();
+        $user->update(['fcm_token' => $request->fcm_token]);
+
+        return response()->json(['message' => 'Token FCM mis a jour']);
     }
 }

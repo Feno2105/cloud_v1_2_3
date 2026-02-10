@@ -16,6 +16,7 @@ return new class extends Migration
             $table->dateTime('update_at')->nullable();
             $table->boolean('id_deleted')->default(false);
             $table->string('fire_user_id', 50)->nullable();
+            $table->string('fcm_token', 100)->nullable();
             $table->unsignedInteger('Id_role');
 
             $table->foreign('Id_role')->references('Id_role')->on('role');
