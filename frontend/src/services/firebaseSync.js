@@ -209,9 +209,9 @@ export const syncService = {
         if (fb && fbDeleted && getUpdatedAt(fb) > getUpdatedAt(s)) {
           continue
         }
-        if (!fb || shouldSync(s, fb, ['create_at', 'update_at', 'created_at', 'updated_at', 'photos', 'status', 'utilisateur', 'problemes'])) {
+        if (!fb || shouldSync(s, fb, ['create_at', 'update_at', 'created_at', 'updated_at', 'status', 'utilisateur', 'problemes', 'photos'])) {
           console.log('➕/🔁 Sync signalement vers Firebase:', id)
-          const payload = stripFields(s, ['photos', 'status', 'utilisateur', 'problemes'])
+          const payload = stripFields(s, ['status', 'utilisateur', 'problemes', 'photos'])
           await firebaseService.addOrUpdateSignalement({ ...payload, Id_signalement: id, is_deleted: localDeleted, update_at: nowIso() })
         }
       }
@@ -224,7 +224,7 @@ export const syncService = {
         if (!local) {
           if (fbDeleted) continue
           console.log('➕ Sync signalement vers API:', id)
-          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement', 'photos', 'status', 'utilisateur', 'problemes'])
+          const payload = stripFields(fs, ['id', 'id_signalement', 'Id_signalement', 'status', 'utilisateur', 'problemes', 'photos'])
           const created = await signalementService.create(payload)
           const localId = created?.Id_signalement ?? created?.id_signalement
           if (localId && toStringId(localId) !== toStringId(id)) {
@@ -234,7 +234,7 @@ export const syncService = {
               { ...fs, Id_signalement: toStringId(localId), update_at: nowIso() }
             )
           }
-        } else if (shouldSync(fs, local, ['create_at', 'update_at', 'created_at', 'updated_at', 'photos', 'status', 'utilisateur', 'problemes'])) {
+        } else if (shouldSync(fs, local, ['create_at', 'update_at', 'created_at', 'updated_at', 'status', 'utilisateur', 'problemes', 'photos'])) {
           if (fbDeleted) {
             console.log('🗑️ Suppression logique signalement vers API:', id)
             await signalementService.update(id, { is_deleted: true })
