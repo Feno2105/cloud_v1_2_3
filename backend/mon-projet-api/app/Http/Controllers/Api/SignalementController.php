@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\HistoriqueAvancement;
 use App\Models\Signalement;
 use App\Models\Status;
-use App\Services\FirebaseNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +58,7 @@ class SignalementController extends Controller
                 new OA\Property(property: "position_", type: "string", example: "-18.8792,47.5079"),
                 new OA\Property(property: "commentaire", type: "string", example: "Route dégradée"),
                 new OA\Property(property: "is_deleted", type: "boolean", example: false),
+                new OA\Property(property: "niveau", type: "integer", example: 1),
                 new OA\Property(property: "Id_status", type: "integer", example: 1),
                 new OA\Property(property: "Id_utilisateur", type: "integer", example: 1)
             ]
@@ -71,6 +71,7 @@ class SignalementController extends Controller
             'position_' => 'nullable|string',
             'commentaire' => 'nullable|string|max:200',
             'is_deleted' => 'sometimes|boolean',
+            'niveau' => 'nullable|integer',
             'Id_status' => 'required|integer|exists:status,Id_status',
             'Id_utilisateur' => 'required|integer|exists:utilisateur,Id_utilisateur'
         ]);
@@ -108,47 +109,27 @@ class SignalementController extends Controller
             'position_' => 'nullable|string',
             'commentaire' => 'nullable|string|max:200',
             'is_deleted' => 'sometimes|boolean',
+            'niveau' => 'nullable|integer',
             'Id_status' => 'sometimes|integer|exists:status,Id_status',
             'Id_utilisateur' => 'sometimes|integer|exists:utilisateur,Id_utilisateur'
         ]);
 
-        try {
-            $result = DB::transaction(function () use ($request, $signalement) {
-                if ($request->has('Id_status') && (int) $request->Id_status !== (int) $signalement->Id_status) {
-                    $signalement->load('utilisateur');
-                    if (!$signalement->utilisateur || !$signalement->utilisateur->fcm_token) {
-                        throw new \RuntimeException('veuillez sync pour avoir token');
-                    }
-
-                    $status = Status::find($request->Id_status);
-                    if ($status) {
-                        $notificationService = new FirebaseNotificationService();
-                        $sent = $notificationService->notifySignalementStatusChange(
-                            $signalement->Id_signalement,
-                            $status->libelle
-                        );
-
-                        if (!$sent) {
-                            throw new \RuntimeException('echec envoi notification');
-                        }
-
-                        HistoriqueAvancement::create([
-                            'nouveau_status' => $status->libelle,
-                            'Id_signalement' => $signalement->Id_signalement
-                        ]);
-                    }
+        $result = DB::transaction(function () use ($request, $signalement) {
+            if ($request->has('Id_status') && (int) $request->Id_status !== (int) $signalement->Id_status) {
+                $status = Status::find($request->Id_status);
+                if ($status) {
+                    HistoriqueAvancement::create([
+                        'nouveau_status' => $status->libelle,
+                        'Id_signalement' => $signalement->Id_signalement
+                    ]);
                 }
+            }
 
-                $signalement->update($request->all());
-                return $signalement;
-            });
+            $signalement->update($request->all());
+            return $signalement;
+        });
 
-            return response()->json($result);
-        } catch (\RuntimeException $e) {
-            $message = $e->getMessage();
-            $status = $message === 'veuillez sync pour avoir token' ? 422 : 500;
-            return response()->json(['message' => $message], $status);
-        }
+        return response()->json($result);
     }
 
     #[OA\Delete(

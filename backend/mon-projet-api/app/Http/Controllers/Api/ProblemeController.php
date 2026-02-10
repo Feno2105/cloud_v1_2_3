@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Prix;
 use App\Models\Probleme;
+use App\Models\Signalement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(
@@ -23,7 +26,7 @@ class ProblemeController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(
-            Probleme::with(['signalements.status', 'signalements.utilisateur'])->get()
+            Probleme::with(['signalements.status', 'signalements.utilisateur', 'signalements.photos'])->get()
         );
     }
 
@@ -58,12 +61,47 @@ class ProblemeController extends Controller
             'Id_signalements.*' => 'integer|exists:signalement,Id_signalement'
         ]);
 
+        $budget = $request->budget;
+        $surface = $request->surface;
+        if ($budget === null && $request->filled('Id_signalement')) {
+            if ($surface === null) {
+                return response()->json(['message' => 'Surface requise pour calculer le budget'], 422);
+            }
+            $signalement = Signalement::find($request->Id_signalement);
+            if (!$signalement) {
+                return response()->json(['message' => 'Signalement introuvable'], 422);
+            }
+
+            $dateRef = $signalement->create_at
+                ? Carbon::parse($signalement->create_at)
+                : ($signalement->update_at ? Carbon::parse($signalement->update_at) : Carbon::now());
+            $prix = Prix::query()
+                ->where('create_at', '<=', $dateRef)
+                ->where(function ($query) use ($dateRef) {
+                    $query->whereNull('date_fin')
+                        ->orWhere('date_fin', '>=', $dateRef);
+                })
+                ->orderByDesc('Id_prix')
+                ->first();
+
+            if (!$prix || $prix->valeur === null) {
+                return response()->json(['message' => 'Aucun prix disponible pour cette date'], 422);
+            }
+
+            $niveau = (int) ($signalement->niveau ?? 0);
+            if ($niveau <= 0) {
+                return response()->json(['message' => 'Niveau invalide pour le signalement'], 422);
+            }
+
+            $budget = (float) $prix->valeur * (float) $niveau * (float) $surface;
+        }
+
         $probleme = Probleme::create($request->only([
             'budget',
             'surface',
             'is_deleted',
             'Id_entreprise'
-        ]));
+        ]) + ['budget' => $budget]);
 
         if ($request->filled('Id_signalement')) {
             $probleme->signalements()->syncWithoutDetaching([$request->Id_signalement]);
@@ -86,7 +124,7 @@ class ProblemeController extends Controller
     public function show(int $id): JsonResponse
     {
         return response()->json(
-            Probleme::with(['signalements.status', 'signalements.utilisateur'])->findOrFail($id)
+            Probleme::with(['signalements.status', 'signalements.utilisateur', 'signalements.photos'])->findOrFail($id)
         );
     }
 

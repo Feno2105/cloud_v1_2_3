@@ -21,7 +21,7 @@ const normalizeRoleLabel = (value: unknown) =>
     .replace(/\s+/g, '_')
 
 export const isMobileAuthorized = (profile?: Record<string, any> | null) => {
-  if (!profile) return false
+  if (!profile) return true
   const roleLabel = normalizeRoleLabel(
     profile.role?.libelle ?? profile.role_libelle ?? profile.role
   )

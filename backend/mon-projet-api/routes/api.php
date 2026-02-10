@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\SignalementController;
 use App\Http\Controllers\Api\ProblemeController;
 use App\Http\Controllers\Api\HistoriqueAvancementController;
 use App\Http\Controllers\Api\PhotoController;
+use App\Http\Controllers\Api\PrixController;
 
 Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
@@ -18,10 +19,10 @@ Route::apiResource('roles', RoleController::class);
 Route::apiResource('entreprises', EntrepriseController::class);
 Route::apiResource('statuses', StatusController::class);
 Route::apiResource('utilisateurs', UtilisateurController::class);
-Route::post('utilisateurs/fcm-token', [UtilisateurController::class, 'updateFcmToken']);
 Route::apiResource('signalements', SignalementController::class);
 Route::get('signalements-unassigned', [SignalementController::class, 'unassigned']);
 Route::apiResource('problemes', ProblemeController::class);
 Route::apiResource('historique-avancements', HistoriqueAvancementController::class);
 Route::apiResource('photos', PhotoController::class);
+Route::apiResource('prix', PrixController::class);
 

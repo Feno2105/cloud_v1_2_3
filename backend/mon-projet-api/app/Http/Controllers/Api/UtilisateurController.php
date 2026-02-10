@@ -118,32 +118,5 @@ class UtilisateurController extends Controller
         return response()->json(['message' => 'Utilisateur supprimé']);
     }
 
-    #[OA\Post(
-        path: "/api/utilisateurs/fcm-token",
-        summary: "Mettre a jour le token FCM",
-        tags: ["Utilisateurs"]
-    )]
-    #[OA\RequestBody(
-        required: true,
-        content: new OA\JsonContent(
-            required: ["fire_user_id", "fcm_token"],
-            properties: [
-                new OA\Property(property: "fire_user_id", type: "string", example: "b7Hk6pV0bVQq..." ),
-                new OA\Property(property: "fcm_token", type: "string", example: "fcm_token_example..." )
-            ]
-        )
-    )]
-    #[OA\Response(response: 200, description: "Token FCM mis a jour")]
-    public function updateFcmToken(Request $request): JsonResponse
-    {
-        $request->validate([
-            'fire_user_id' => 'required|string|exists:utilisateur,fire_user_id',
-            'fcm_token' => 'required|string|max:255'
-        ]);
-
-        $user = Utilisateur::where('fire_user_id', $request->fire_user_id)->firstOrFail();
-        $user->update(['fcm_token' => $request->fcm_token]);
-
-        return response()->json(['message' => 'Token FCM mis a jour']);
-    }
+    // Notifications désactivées : endpoint FCM supprimé.
 }

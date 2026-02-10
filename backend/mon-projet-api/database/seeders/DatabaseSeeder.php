@@ -107,6 +107,7 @@ class DatabaseSeeder extends Seeder
                 'position_' => '-18.8792,47.5079',
                 'commentaire' => 'Route dégradée',
                 'is_deleted' => false,
+                'niveau' => 0,
                 'Id_status' => 1,
                 'Id_utilisateur' => 1
             ],
@@ -116,28 +117,38 @@ class DatabaseSeeder extends Seeder
                 'position_' => '-18.9100,47.5200',
                 'commentaire' => 'Poteau endommagé',
                 'is_deleted' => false,
+                'niveau' => 0,
                 'Id_status' => 1,
                 'Id_utilisateur' => 2
             ]
         ]);
 
-        DB::table('probleme')->insert([
+        DB::table('prix')->insert([
             [
                 'create_at' => $now,
                 'update_at' => $now,
-                'is_deleted' => false,
-                'budget' => 15000.50,
-                'surface' => 120.75,
-                'Id_entreprise' => 1
-            ],
-            [
-                'create_at' => $now,
-                'update_at' => $now,
-                'is_deleted' => false,
-                'budget' => 8000.00,
-                'surface' => 60.50,
-                'Id_entreprise' => 2
+                'date_fin' => null,
+                'valeur' => 25000.00
             ]
         ]);
+
+        // DB::table('probleme')->insert([
+        //     [
+        //         'create_at' => $now,
+        //         'update_at' => $now,
+        //         'is_deleted' => false,
+        //         'budget' => 15000.50,
+        //         'surface' => 120.75,
+        //         'Id_entreprise' => 1
+        //     ],
+        //     [
+        //         'create_at' => $now,
+        //         'update_at' => $now,
+        //         'is_deleted' => false,
+        //         'budget' => 8000.00,
+        //         'surface' => 60.50,
+        //         'Id_entreprise' => 2
+        //     ]
+        // ]);
     }
 }

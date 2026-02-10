@@ -21,6 +21,7 @@ class Signalement extends Model
         'position_',
         'commentaire',
         'is_deleted',
+        'niveau',
         'Id_status',
         'Id_utilisateur'
     ];
